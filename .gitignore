@@ -99,3 +99,14 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+.idea
+log.*
+*.log
+out.*
+*.out
+*.dat
+*.sort
+*.tmp
+tmp.*
+
