@@ -7,6 +7,7 @@ DEVICE = -1
 
 # framework conf
 BATCH_SZ = 100
+EPOCH_NUM = 40
 
 # model conf
 EMBED_SZ = 50

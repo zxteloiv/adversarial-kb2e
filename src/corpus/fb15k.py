@@ -4,10 +4,16 @@ from __future__ import absolute_import
 import logging
 from vocabulary import Vocabulary
 
+
 def reader(generator):
-    for l in generator:
+    for i, l in enumerate(generator):
         h, r, t = l.rstrip().split('\t')
         yield h, r, t
+
+        if i % 10000 == 0:
+            logging.debug('%d examples are read' % (i + 1))
+    logging.debug('%d examples are read' % (i + 1))
+
 
 def build_vocab(filename):
     vocab_ent, vocab_rel = Vocabulary(), Vocabulary()
@@ -20,7 +26,10 @@ def build_vocab(filename):
 
 if __name__ == "__main__":
     import config
-    import os.path
+    import sys
+    if sys.argv[1] == '--debug':
+        logging.getLogger().setLevel(logging.DEBUG)
+
     print "build vocab from file %s" % config.TRAIN_DATA
     vocab_ent, vocab_rel = build_vocab(config.TRAIN_DATA)
     vocab_ent.save(config.VOCAB_ENT_FILE)
