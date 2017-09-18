@@ -27,7 +27,7 @@ class WGANUpdator(chainer.training.StandardUpdater):
             h = h.astype(xp.int32, copy=False) # batch * 1
             r = r.astype(xp.int32, copy=False) # batch * 1
             t_org = t.astype(xp.int32, copy=False) # batch * 1
-            t = self.g.embed_entity(t_org).reshape(h.shape[0], -1) # batch * 1 * embedding -> batch * embedding
+            t = self.g.embed_entity(t_org) # batch * 1 * embedding -> batch * embedding
             t_tilde = self.g(h, r) # batch * embedding(generator output)
 
             epsilon = xp.random.uniform(0.0, 1.0, (h.shape[0], 1))

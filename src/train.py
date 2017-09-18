@@ -14,7 +14,7 @@ def main():
     dataset = map(lambda x: mod_dataset.load_corpus(x, vocab_ent, vocab_rel), (config.TRAIN_DATA, config.VALID_DATA))
     train_iter, valid_iter = map(lambda x: chainer.iterators.SerialIterator(x, batch_size=config.BATCH_SZ), dataset)
 
-    generator = models.Generator(config.EMBED_SZ, len(vocab_ent), len(vocab_rel))
+    generator = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
     discriminator = models.Discriminator(config.EMBED_SZ)
     if config.DEVICE >= 0:
         chainer.cuda.get_device_from_id(config.DEVICE).use()

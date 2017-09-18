@@ -37,7 +37,14 @@ class Generator(chainer.Chain):
         return self.mlp(x)
 
     def embed_entity(self, e):
-        return self.ent_emb(e)
+        return self.ent_emb(e).reshape(e.shape[0], -1)
+
+    @staticmethod
+    def create_generator(emb_sz, vocab_ent, vocab_rel):
+        # embedding link starts from 0, but token id starts from 1,
+        # thus make a spare embedding for dummy id 0
+        g = Generator(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1)
+        return g
 
 class Discriminator(chainer.Chain):
     def __init__(self, in_dim):
