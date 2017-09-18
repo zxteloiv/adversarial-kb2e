@@ -4,17 +4,19 @@ import os.path
 
 # environment conf
 DATASET_IN_USE = 'FB15k'
-DEVICE = -1
+DEVICE = 3
 ROOT_PATH = '..'
 
-# training framework conf
-BATCH_SZ = 100
-EPOCH_NUM = 40
-OPT_D_EPOCH = 40 # how many epochs are needed for training a discriminator in one epoch for the generator
+USE_TINY_CORPUS_NUM = -1 #1000
 
+# training framework conf
+BATCH_SZ = 500
+EPOCH_NUM = 100000
+OPT_D_EPOCH = 20 # how many epochs are needed for training a discriminator in one epoch for the generator
 
 # model conf
 EMBED_SZ = 50
+PENALTY_COEFF = 10
 
 # =============================================================================
 # auto computation for data, configurations listed below are generally forbidden

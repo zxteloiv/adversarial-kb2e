@@ -23,9 +23,29 @@ class MLP(chainer.Chain):
 
 
 class Generator(chainer.Chain):
-    def __init__(self, in_dim, out_dim):
-        super(Generator, self).__init__()
-        pass
+    def __init__(self, in_dim, ent_num, rel_num):
+        super(Generator, self).__init__(
+            ent_emb=L.EmbedID(ent_num, in_dim),
+            rel_emb=L.EmbedID(rel_num, in_dim),
+            mlp=MLP(in_dim * 2, in_dim),
+        )
+
+    def __call__(self, h, r):
+        h_emb = self.ent_emb(h).reshape(h.shape[0], -1)
+        r_emb = self.rel_emb(r).reshape(h.shape[0], -1)
+        x = F.concat((h_emb, r_emb))
+        return self.mlp(x)
+
+    def embed_entity(self, e):
+        return self.ent_emb(e)
+
+class Discriminator(chainer.Chain):
+    def __init__(self, in_dim):
+        super(Discriminator, self).__init__(
+            mlp=MLP(in_dim, 1)
+        )
 
     def __call__(self, x):
-        return x
+        return self.mlp(x)
+
+

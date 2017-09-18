@@ -3,32 +3,42 @@
 from __future__ import absolute_import
 import os, datetime
 import chainer
+import chainer.training.extensions as extensions
 import config
-import corpus.dataset
+import corpus.dataset as mod_dataset
 import models
 import updaters
 
 def main():
-    vocab_ent, vocab_rel = corpus.dataset.load_vocab()
-    dataset = map(lambda x: corpus.dataset.load_corpus(x, vocab_ent, vocab_rel), (config.TRAIN_DATA, config.VALID_DATA))
+    vocab_ent, vocab_rel = mod_dataset.load_vocab()
+    dataset = map(lambda x: mod_dataset.load_corpus(x, vocab_ent, vocab_rel), (config.TRAIN_DATA, config.VALID_DATA))
     train_iter, valid_iter = map(lambda x: chainer.iterators.SerialIterator(x, batch_size=config.BATCH_SZ), dataset)
 
-    generator = models.Generator(10, 10)
-    opt_g = chainer.optimizers.Adam()
+    generator = models.Generator(config.EMBED_SZ, len(vocab_ent), len(vocab_rel))
+    discriminator = models.Discriminator(config.EMBED_SZ)
+    if config.DEVICE >= 0:
+        chainer.cuda.get_device_from_id(config.DEVICE).use()
+        generator.to_gpu(config.DEVICE)
+        discriminator.to_gpu(config.DEVICE)
+
+    opt_g = chainer.optimizers.Adam(1e-4, 0.5, 0.9)
     opt_g.setup(generator)
-    discriminator = models.MLP(10, 10)
-    opt_d = chainer.optimizers.Adam()
+    opt_d = chainer.optimizers.Adam(1e-4, 0.5, 0.9)
     opt_d.setup(discriminator)
 
-    updater = updaters.WGANUpdator(train_iter, opt_g, opt_d, device=config.DEVICE, d_epoch=config.OPT_D_EPOCH)
+    updater = updaters.WGANUpdator(train_iter, opt_g, opt_d,
+                                   device=config.DEVICE, d_epoch=config.OPT_D_EPOCH, penalty_coeff=config.PENALTY_COEFF)
 
     trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'),
                                        out=os.path.join(config.MODEL_PATH,
                                                         datetime.datetime.now().strftime('result-%Y-%m-%d-%H-%M-%S')))
 
-    trainer.extend(chainer.training.extensions.LogReport())
-    trainer.extend(chainer.training.extensions.ProgressBar(update_interval=100))
-    trainer.extend(chainer.training.extensions.snapshot())
+    trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
+    trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss_g', 'w-distance', 'penalty', 'elapsed_time']))
+    trainer.extend(extensions.ProgressBar(update_interval=20))
+    # trainer.extend(extensions.snapshot())
+    trainer.extend(extensions.snapshot_object(generator, 'gen_iter_{.updater.iteration}'), trigger=(100, 'iteration'))
+    trainer.extend(extensions.snapshot_object(discriminator, 'd_iter_{.updater.iteration}'), trigger=(100, 'iteration'))
     trainer.run()
 
 if __name__ == "__main__":

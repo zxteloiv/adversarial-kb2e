@@ -3,6 +3,7 @@
 from __future__ import absolute_import
 import chainer
 import chainer.datasets
+import numpy as np
 import config
 import logging
 from vocabulary import Vocabulary
@@ -11,9 +12,15 @@ from vocabulary import Vocabulary
 def load_corpus(filename, vocab_ent, vocab_rel):
     heads, rels, tails = [], [], []
     for i, (h, r, t) in enumerate(open_dataset(filename)):
-        heads.append(vocab_ent(h))
-        tails.append(vocab_ent(t))
-        rels.append(vocab_rel(r))
+        if config.USE_TINY_CORPUS_NUM > 0 and i / config.USE_TINY_CORPUS_NUM >= 1:
+            break
+
+        # heads.append(vocab_ent(h))
+        # tails.append(vocab_ent(t))
+        # rels.append(vocab_rel(r))
+        heads.append(np.array([vocab_ent(h)]))
+        rels.append(np.array([vocab_ent(r)]))
+        tails.append(np.array([vocab_ent(t)]))
 
     return chainer.datasets.TupleDataset(heads, rels, tails)
 
