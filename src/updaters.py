@@ -24,10 +24,7 @@ class WGANUpdator(chainer.training.StandardUpdater):
             h, r, t = self.converter(batch, self.device)
             xp = chainer.cuda.get_array_module(h) # either numpy or xp based on device
 
-            h = h.astype(xp.int32, copy=False) # batch * 1
-            r = r.astype(xp.int32, copy=False) # batch * 1
-            t_org = t.astype(xp.int32, copy=False) # batch * 1
-            t = self.g.embed_entity(t_org) # batch * 1 * embedding -> batch * embedding
+            t = self.g.embed_entity(t) # batch * 1 * embedding -> batch * embedding
             t_tilde = self.g(h, r) # batch * embedding(generator output)
 
             epsilon = xp.random.uniform(0.0, 1.0, (h.shape[0], 1))
@@ -47,13 +44,13 @@ class WGANUpdator(chainer.training.StandardUpdater):
             self.d.cleargrads()
             loss_d.backward()
             self.get_optimizer('opt_d').update()
+            # print loss_d.data
 
         batch = iterator.__next__()
         h, r, t = self.converter(batch, self.device)
         xp = chainer.cuda.get_array_module(h) # either numpy or xp based on device
-        h = h.astype(xp.int32, copy=False)
-        r = r.astype(xp.int32, copy=False)
         t_tilde = self.g(h, r)
+        # loss_supervised = F.batch_l2_norm_squared(t_tilde - self.g.embed_entity(t)).reshape(-1, 1)
         loss_g = F.average(-self.d(t_tilde))
         self.g.cleargrads()
         loss_g.backward()

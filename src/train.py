@@ -35,7 +35,7 @@ def main():
 
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
     trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss_g', 'w-distance', 'penalty', 'elapsed_time']))
-    trainer.extend(extensions.ProgressBar(update_interval=20))
+    # trainer.extend(extensions.ProgressBar(update_interval=20))
     # trainer.extend(extensions.snapshot())
     trainer.extend(extensions.snapshot_object(generator, 'gen_iter_{.updater.iteration}'), trigger=(100, 'iteration'))
     trainer.extend(extensions.snapshot_object(discriminator, 'd_iter_{.updater.iteration}'), trigger=(100, 'iteration'))
