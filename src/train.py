@@ -21,9 +21,11 @@ def main():
         generator.to_gpu(config.DEVICE)
         discriminator.to_gpu(config.DEVICE)
 
-    opt_g = chainer.optimizers.Adam(1e-4, 0.5, 0.9)
+    #opt_g = chainer.optimizers.Adam(1e-4, 0.5, 0.9)
+    #opt_d = chainer.optimizers.Adam(1e-4, 0.5, 0.9)
+    opt_g = chainer.optimizers.RMSprop()
+    opt_d = chainer.optimizers.RMSprop()
     opt_g.setup(generator)
-    opt_d = chainer.optimizers.Adam(1e-4, 0.5, 0.9)
     opt_d.setup(discriminator)
 
     updater = updaters.WGANUpdator(train_iter, opt_g, opt_d,
