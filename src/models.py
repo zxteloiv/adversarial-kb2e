@@ -54,8 +54,7 @@ class Discriminator(chainer.Chain):
             # for h, r, and t
             l1=L.Linear(in_dim * 3, in_dim),
             l2=L.Linear(in_dim, in_dim),
-            l3=L.Linear(in_dim, in_dim),
-            l4=L.Linear(in_dim, 1),
+            l3=L.Linear(in_dim, 1),
             # mlp=MLP(in_dim * 3, 1)
         )
 
@@ -63,9 +62,8 @@ class Discriminator(chainer.Chain):
         x = F.concat((h_emb, r_emb, t_emb))
         h1 = F.relu(self.l1(x))
         h2 = F.relu(self.l2(h1))
-        h3 = F.relu(self.l3(h2))
-        h4 = self.l4(h3)
-        return h4
+        h3 = self.l2(h2)
+        return h3
 
 class BilinearDiscriminator(chainer.Chain):
     def __init__(self, in_dim):
