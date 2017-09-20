@@ -15,7 +15,7 @@ def main():
     train_iter, valid_iter = map(lambda x: chainer.iterators.SerialIterator(x, batch_size=config.BATCH_SZ), dataset)
 
     generator = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
-    discriminator = models.Discriminator(config.EMBED_SZ)
+    discriminator = models.BilinearDiscriminator(config.EMBED_SZ)
     if config.DEVICE >= 0:
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         generator.to_gpu(config.DEVICE)
@@ -35,8 +35,6 @@ def main():
 
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
     trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss_g', 'w-distance', 'penalty', 'elapsed_time']))
-    # trainer.extend(extensions.ProgressBar(update_interval=20))
-    # trainer.extend(extensions.snapshot())
     trainer.extend(extensions.snapshot_object(generator, 'gen_iter_{.updater.iteration}'), trigger=(100, 'iteration'))
     trainer.extend(extensions.snapshot_object(discriminator, 'd_iter_{.updater.iteration}'), trigger=(100, 'iteration'))
     trainer.run()

@@ -24,20 +24,24 @@ class WGANUpdator(chainer.training.StandardUpdater):
             h, r, t = self.converter(batch, self.device)
             xp = chainer.cuda.get_array_module(h) # either numpy or xp based on device
 
-            t = self.g.embed_entity(t) # batch * 1 * embedding -> batch * embedding
+            h_emb = self.g.embed_entity(h)
+            r_emb = self.g.embed_relation(r)
+            t_emb = self.g.embed_entity(t) # batch * embedding
+
             t_tilde = self.g(h, r) # batch * embedding(generator output)
 
+            # sampling
             epsilon = xp.random.uniform(0.0, 1.0, (h.shape[0], 1))
-            t_hat = epsilon * t + (1 - epsilon) * t_tilde
+            t_hat = epsilon * t_emb + (1 - epsilon) * t_tilde
             delta = 1e-7
-            # t_hat_delta = (epsilon + delta) * t + (1 - epsilon - delta) * t_tilde
             t_hat_delta = t_hat + delta
+            # t_hat_delta = (epsilon + delta) * t + (1 - epsilon - delta) * t_tilde
 
             delta_approx = F.sqrt(F.batch_l2_norm_squared(t_hat_delta - t_hat)).reshape(-1, 1)
-            derivative = (self.d(t_hat_delta) - self.d(t_hat)) / delta_approx + delta
+            derivative = (self.d(h_emb, r_emb, t_hat_delta) - self.d(h_emb, r_emb, t_hat)) / delta_approx + delta
             penalty = (F.sqrt(F.batch_l2_norm_squared(derivative)) - 1) ** 2
 
-            loss_gan = F.average(self.d(t_tilde) - self.d(t))
+            loss_gan = F.average(self.d(h_emb, r_emb, t_tilde) - self.d(h_emb, r_emb, t_emb))
             loss_penalty = F.average(penalty) * self.pen_coeff
             loss_d = loss_gan + loss_penalty
 
@@ -49,9 +53,10 @@ class WGANUpdator(chainer.training.StandardUpdater):
         batch = iterator.__next__()
         h, r, t = self.converter(batch, self.device)
         xp = chainer.cuda.get_array_module(h) # either numpy or xp based on device
+        h_emb, r_emb = self.g.embed_entity(h), self.g.embed_relation(r)
         t_tilde = self.g(h, r)
         # loss_supervised = F.batch_l2_norm_squared(t_tilde - self.g.embed_entity(t)).reshape(-1, 1)
-        loss_g = F.average(-self.d(t_tilde))
+        loss_g = F.average(-self.d(h_emb, r_emb, t_tilde))
         self.g.cleargrads()
         loss_g.backward()
         self.get_optimizer('opt_g').update()
