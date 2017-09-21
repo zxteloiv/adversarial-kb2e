@@ -31,7 +31,7 @@ def run_test(args):
     chainer.serializers.load_npz(args.generator, g)
 
     if args.discriminator:
-        d = models.BilinearDiscriminator(config.EMBED_SZ)
+        d = models.Discriminator(config.EMBED_SZ)
         chainer.serializers.load_npz(args.discriminator, d)
     else:
         d = None

@@ -15,16 +15,16 @@ def main():
     train_iter, valid_iter = map(lambda x: chainer.iterators.SerialIterator(x, batch_size=config.BATCH_SZ), dataset)
 
     generator = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
-    discriminator = models.BilinearDiscriminator(config.EMBED_SZ)
+    discriminator = models.Discriminator(config.EMBED_SZ)
     if config.DEVICE >= 0:
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         generator.to_gpu(config.DEVICE)
         discriminator.to_gpu(config.DEVICE)
 
-    #opt_g = chainer.optimizers.Adam(1e-4, 0.5, 0.9)
-    #opt_d = chainer.optimizers.Adam(1e-4, 0.5, 0.9)
-    opt_g = chainer.optimizers.RMSprop()
-    opt_d = chainer.optimizers.RMSprop()
+    opt_g = chainer.optimizers.Adam(1e-4, 0.5, 0.9)
+    opt_d = chainer.optimizers.Adam(1e-4, 0.5, 0.9)
+    # opt_g = chainer.optimizers.RMSprop()
+    # opt_d = chainer.optimizers.RMSprop()
     opt_g.setup(generator)
     opt_d.setup(discriminator)
 
