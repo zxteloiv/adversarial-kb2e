@@ -18,6 +18,8 @@ OPT_D_EPOCH = 20 # how many epochs are needed for training a discriminator in on
 EMBED_SZ = 50
 PENALTY_COEFF = 10
 
+TRANSE_GAMMA = 1
+
 # =============================================================================
 # auto computation for data, configurations listed below are generally forbidden
 

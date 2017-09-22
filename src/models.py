@@ -5,6 +5,7 @@ import chainer
 import chainer.functions as F
 import chainer.links as L
 import numpy as np
+import math
 
 class MLP(chainer.Chain):
     def __init__(self, in_dim, out_dim):
@@ -52,6 +53,51 @@ class Generator(chainer.Chain):
         # thus make a spare embedding for dummy id 0
         g = Generator(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1)
         return g
+
+class TransE(chainer.Chain):
+    def __init__(self, emb_sz, ent_num, rel_num, margin):
+        random_range = 6 / math.sqrt(emb_sz)
+        # initial_ent_W = np.random.uniform(-random_range, random_range, (ent_num, emb_sz))
+        # initial_rel_W = np.random.uniform(-random_range, random_range, (rel_num, emb_sz))
+
+        super(TransE, self).__init__(
+            ent_emb=L.EmbedID(ent_num, emb_sz),
+            rel_emb=L.EmbedID(rel_num, emb_sz),
+            # ent_emb=L.EmbedID(ent_num, emb_sz, initial_ent_W),
+            # rel_emb=L.EmbedID(rel_num, emb_sz, initial_rel_W),
+        )
+
+        self.ent_num = ent_num
+        self.rel_num = rel_num
+        self.margin = margin
+        xp = chainer.cuda.get_array_module(self.ent_emb)
+        # self.rel_emb.W = F.normalize(self.rel_emb.W, eps=1e-7)
+
+    def __call__(self, h, r, t):
+        # self.ent_emb.W = F.normalize(self.ent_emb.W, eps=1e-7)
+
+        bsz = h.shape[0]
+        h = self.ent_emb(h).reshape(bsz, -1)
+        t = self.ent_emb(t).reshape(bsz, -1)
+        r = self.rel_emb(r).reshape(bsz, -1)
+        xp = chainer.cuda.get_array_module(h)
+
+        h_corrupted = xp.random.randint(1, self.ent_num + 1, size=(h.shape[0], 1))
+        t_corrupted = xp.random.randint(1, self.ent_num + 1, size=(h.shape[0], 1))
+        h_corrupted = self.ent_emb(h_corrupted).reshape(bsz, -1)
+        t_corrupted = self.ent_emb(t_corrupted).reshape(bsz, -1)
+
+        dis_pos = F.sqrt(F.batch_l2_norm_squared(h + r - t))
+        dis_neg = F.sqrt(F.batch_l2_norm_squared(h_corrupted + r - t_corrupted))
+
+        loss = F.sum(F.relu(self.margin + dis_pos - dis_neg))
+        chainer.report({'loss': loss})
+        return loss
+
+    @staticmethod
+    def create_transe(emb_sz, vocab_ent, vocab_rel, gamma):
+        m = TransE(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1, gamma)
+        return m
 
 class Discriminator(chainer.Chain):
     def __init__(self, in_dim):
