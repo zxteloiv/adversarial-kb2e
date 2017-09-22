@@ -24,15 +24,15 @@ def TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         transE.to_gpu(config.DEVICE)
 
-    opt = chainer.optimizers.SGD(0.01)
+    opt = chainer.optimizers.SGD(0.001)
     opt.setup(transE)
     updater = chainer.training.StandardUpdater(train_iter, opt, device=config.DEVICE)
     trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'),
                                        out=os.path.join(config.MODEL_PATH,
                                                         datetime.datetime.now().strftime('result-%Y-%m-%d-%H-%M-%S')))
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
-    trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss']))
-    trainer.extend(extensions.snapshot_object(transE, 'transE_iter_{.updater.iteration}'), trigger=(50, 'iteration'))
+    trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss', 'elapsed_time']))
+    trainer.extend(extensions.snapshot_object(transE, 'transE_iter_{.updater.iteration}'), trigger=(1000, 'iteration'))
     return trainer
 
 def WGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
