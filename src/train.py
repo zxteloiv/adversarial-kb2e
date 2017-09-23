@@ -1,7 +1,7 @@
 # coding: utf-8
 
 from __future__ import absolute_import
-import os, datetime
+import os, datetime, sys
 import chainer
 import chainer.training.extensions as extensions
 import config
@@ -20,11 +20,14 @@ def main():
 
 def TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     transE = models.TransE.create_transe(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
+    if len(sys.argv) > 1:
+        chainer.serializers.load_npz(sys.argv[1], transE)
+
     if config.DEVICE >= 0:
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         transE.to_gpu(config.DEVICE)
 
-    opt = chainer.optimizers.SGD(0.001)
+    opt = chainer.optimizers.SGD(0.01)
     opt.setup(transE)
     updater = chainer.training.StandardUpdater(train_iter, opt, device=config.DEVICE)
     trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'),
