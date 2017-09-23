@@ -46,7 +46,6 @@ def run_TransE_test(args, vocab_ent, vocab_rel, train_data, valid_data, test_dat
     bsz = candidate_t.shape[0]
     ct_emb = transE.ent_emb(candidate_t).reshape(bsz, -1).data
 
-    token_ids = vocab_ent.id_to_token.keys()
     avgrank, hits10, count = 0, 0, 0
     for i, batch in enumerate(data_iter):
         h, r, t = batch[0] # each one is an array of shape (1, )
@@ -69,8 +68,8 @@ def run_TransE_test(args, vocab_ent, vocab_rel, train_data, valid_data, test_dat
             logging.info('%d testing data processed, temp rank: %d, hits10: %d, avgrank: %f' % (
                 count, avgrank, hits10, avgrank / count))
 
-    avgrank /= count
-    hits10 /= count
+    avgrank /= count * 1.0
+    hits10 /= count * 1.0
     print "avgrank:", avgrank, "hits@10:", hits10, "count:", count
 
 

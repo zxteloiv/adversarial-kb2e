@@ -61,8 +61,6 @@ class TransE(chainer.Chain):
         initial_rel_W = np.random.uniform(-random_range, random_range, (rel_num, emb_sz))
 
         super(TransE, self).__init__(
-            # ent_emb=L.EmbedID(ent_num, emb_sz),
-            # rel_emb=L.EmbedID(rel_num, emb_sz),
             ent_emb=L.EmbedID(ent_num, emb_sz, initial_ent_W),
             rel_emb=L.EmbedID(rel_num, emb_sz, initial_rel_W),
         )
@@ -92,8 +90,13 @@ class TransE(chainer.Chain):
         h_corrupted = self.ent_emb(h_corrupted).reshape(bsz, -1)
         t_corrupted = self.ent_emb(t_corrupted).reshape(bsz, -1)
 
-        dis_pos = F.sqrt(F.batch_l2_norm_squared(h + r - t))
-        dis_neg = F.sqrt(F.batch_l2_norm_squared(h_corrupted + r - t_corrupted))
+        # # L2 norm
+        # dis_pos = F.sqrt(F.batch_l2_norm_squared(h + r - t))
+        # dis_neg = F.sqrt(F.batch_l2_norm_squared(h_corrupted + r - t_corrupted))
+
+        # L1 norm
+        dis_pos = F.sum(F.absolute(h + r - t), axis=1)
+        dis_neg = F.sum(F.absolute(h_corrupted + r - t_corrupted), axis=1)
 
         loss = F.sum(F.relu(self.margin + dis_pos - dis_neg))
         chainer.report({'loss': loss})
