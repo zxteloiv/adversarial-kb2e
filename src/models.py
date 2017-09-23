@@ -57,24 +57,29 @@ class Generator(chainer.Chain):
 class TransE(chainer.Chain):
     def __init__(self, emb_sz, ent_num, rel_num, margin):
         random_range = 6 / math.sqrt(emb_sz)
-        # initial_ent_W = np.random.uniform(-random_range, random_range, (ent_num, emb_sz))
-        # initial_rel_W = np.random.uniform(-random_range, random_range, (rel_num, emb_sz))
+        initial_ent_W = np.random.uniform(-random_range, random_range, (ent_num, emb_sz))
+        initial_rel_W = np.random.uniform(-random_range, random_range, (rel_num, emb_sz))
 
         super(TransE, self).__init__(
-            ent_emb=L.EmbedID(ent_num, emb_sz),
-            rel_emb=L.EmbedID(rel_num, emb_sz),
-            # ent_emb=L.EmbedID(ent_num, emb_sz, initial_ent_W),
-            # rel_emb=L.EmbedID(rel_num, emb_sz, initial_rel_W),
+            # ent_emb=L.EmbedID(ent_num, emb_sz),
+            # rel_emb=L.EmbedID(rel_num, emb_sz),
+            ent_emb=L.EmbedID(ent_num, emb_sz, initial_ent_W),
+            rel_emb=L.EmbedID(rel_num, emb_sz, initial_rel_W),
         )
 
         self.ent_num = ent_num
         self.rel_num = rel_num
         self.margin = margin
-        xp = chainer.cuda.get_array_module(self.ent_emb)
-        # self.rel_emb.W = F.normalize(self.rel_emb.W, eps=1e-7)
+        self.rel_emb.W.data = self.normalize_embedding(self.rel_emb.W.data)
+
+    def normalize_embedding(self, x, eps=1e-7, axis=1):
+        xp = chainer.cuda.get_array_module(x)
+        norm = xp.linalg.norm(x, axis=axis) + eps
+        norm = xp.expand_dims(norm, axis=axis)
+        return x / norm
 
     def __call__(self, h, r, t):
-        # self.ent_emb.W = F.normalize(self.ent_emb.W, eps=1e-7)
+        self.ent_emb.W.data = self.normalize_embedding(self.ent_emb.W.data)
 
         bsz = h.shape[0]
         h = self.ent_emb(h).reshape(bsz, -1)
