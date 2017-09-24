@@ -90,13 +90,13 @@ class TransE(chainer.Chain):
         h_corrupted = self.ent_emb(h_corrupted).reshape(bsz, -1)
         t_corrupted = self.ent_emb(t_corrupted).reshape(bsz, -1)
 
-        # # L2 norm
-        # dis_pos = F.sqrt(F.batch_l2_norm_squared(h + r - t))
-        # dis_neg = F.sqrt(F.batch_l2_norm_squared(h_corrupted + r - t_corrupted))
+        # L2 norm
+        dis_pos = F.sqrt(F.batch_l2_norm_squared(h + r - t))
+        dis_neg = F.sqrt(F.batch_l2_norm_squared(h_corrupted + r - t_corrupted))
 
-        # L1 norm
-        dis_pos = F.sum(F.absolute(h + r - t), axis=1)
-        dis_neg = F.sum(F.absolute(h_corrupted + r - t_corrupted), axis=1)
+        # # L1 norm
+        # dis_pos = F.sum(F.absolute(h + r - t), axis=1)
+        # dis_neg = F.sum(F.absolute(h_corrupted + r - t_corrupted), axis=1)
 
         loss = F.sum(F.relu(self.margin + dis_pos - dis_neg))
         chainer.report({'loss': loss})
