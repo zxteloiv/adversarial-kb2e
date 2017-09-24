@@ -55,7 +55,7 @@ class Generator(chainer.Chain):
         return g
 
 class TransE(chainer.Chain):
-    def __init__(self, emb_sz, ent_num, rel_num, margin):
+    def __init__(self, emb_sz, ent_num, rel_num, margin, norm=1):
         random_range = 6 / math.sqrt(emb_sz)
         initial_ent_W = np.random.uniform(-random_range, random_range, (ent_num, emb_sz))
         initial_rel_W = np.random.uniform(-random_range, random_range, (rel_num, emb_sz))
@@ -68,6 +68,7 @@ class TransE(chainer.Chain):
         self.ent_num = ent_num
         self.rel_num = rel_num
         self.margin = margin
+        self.norm = norm
         self.rel_emb.W.data = self.normalize_embedding(self.rel_emb.W.data)
 
     def normalize_embedding(self, x, eps=1e-7, axis=1):
@@ -85,26 +86,33 @@ class TransE(chainer.Chain):
         r = self.rel_emb(r).reshape(bsz, -1)
         xp = chainer.cuda.get_array_module(h)
 
-        h_corrupted = xp.random.randint(1, self.ent_num + 1, size=(h.shape[0], 1))
-        t_corrupted = xp.random.randint(1, self.ent_num + 1, size=(h.shape[0], 1))
-        h_corrupted = self.ent_emb(h_corrupted).reshape(bsz, -1)
-        t_corrupted = self.ent_emb(t_corrupted).reshape(bsz, -1)
+        half = bsz / 2
+        h_corrupted = xp.random.randint(1, self.ent_num + 1, size=(half, 1))
+        t_corrupted = xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1))
+        h_corrupted = self.ent_emb(h_corrupted).reshape(half, -1)
+        t_corrupted = self.ent_emb(t_corrupted).reshape(bsz - half, -1)
 
-        # L2 norm
-        dis_pos = F.sqrt(F.batch_l2_norm_squared(h + r - t))
-        dis_neg = F.sqrt(F.batch_l2_norm_squared(h_corrupted + r - t_corrupted))
 
-        # # L1 norm
-        # dis_pos = F.sum(F.absolute(h + r - t), axis=1)
-        # dis_neg = F.sum(F.absolute(h_corrupted + r - t_corrupted), axis=1)
+        if self.norm == 1:
+            # L1 norm
+            dis_pos = F.sum(F.absolute(h + r - t), axis=1)
+            dis_neg_h = F.sum(F.absolute(h_corrupted + r[:half] - t[:half]), axis=1)
+            dis_neg_t = F.sum(F.absolute(h[half:] + r[half:] - t_corrupted), axis=1)
+        else:
+            # L2 norm
+            dis_pos = F.sqrt(F.batch_l2_norm_squared(h + r - t))
+            dis_neg_h = F.sqrt(F.batch_l2_norm_squared(h_corrupted + r[:half] - t[:half]))
+            dis_neg_t = F.sqrt(F.batch_l2_norm_squared(h[half:] + r[half:] - t_corrupted))
+
+        dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0) # 1:1 size for corrupted heads and tails
 
         loss = F.sum(F.relu(self.margin + dis_pos - dis_neg))
         chainer.report({'loss': loss})
         return loss
 
     @staticmethod
-    def create_transe(emb_sz, vocab_ent, vocab_rel, gamma):
-        m = TransE(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1, gamma)
+    def create_transe(emb_sz, vocab_ent, vocab_rel, gamma, norm=1):
+        m = TransE(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1, gamma, norm)
         return m
 
 class Discriminator(chainer.Chain):

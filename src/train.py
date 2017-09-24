@@ -20,7 +20,7 @@ def main():
 
 
 def TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
-    transE = models.TransE.create_transe(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
+    transE = models.TransE.create_transe(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA, config.TRANSE_NORM)
     if len(sys.argv) > 1:
         chainer.serializers.load_npz(sys.argv[1], transE)
 
