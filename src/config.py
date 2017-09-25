@@ -10,7 +10,7 @@ ROOT_PATH = '..'
 USE_TINY_CORPUS_NUM = -1 #1000
 
 # training framework conf
-BATCH_SZ = 1000
+BATCH_SZ = 100
 EPOCH_NUM = 100000
 OPT_D_EPOCH = 20 # how many epochs are needed for training a discriminator in one epoch for the generator
 SGD_LR = 0.01 # learning rate for SGD only
