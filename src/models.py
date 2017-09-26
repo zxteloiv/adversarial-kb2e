@@ -24,6 +24,20 @@ class MLP(chainer.Chain):
         return h4
 
 
+class VarMLP(chainer.ChainList):
+    def __init__(self, layer_dims):
+        super(VarMLP, self).__init__()
+        for i in xrange(len(layer_dims) -1):
+            l = L.Linear(layer_dims[i], layer_dims[i+1])
+            self.add_link(l)
+
+    def __call__(self, x):
+        hidden = x
+        for i, link in enumerate(self.children()):
+            hidden = F.relu(link(hidden)) if i < len(self) - 1 else link(hidden)
+        return hidden
+
+
 class Generator(chainer.Chain):
     def __init__(self, in_dim, ent_num, rel_num):
         super(Generator, self).__init__(
@@ -53,6 +67,78 @@ class Generator(chainer.Chain):
         # thus make a spare embedding for dummy id 0
         g = Generator(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1)
         return g
+
+
+class HingeLossGen(chainer.Chain):
+    def __init__(self, emb_sz, ent_num, rel_num, margin, norm=1):
+        super(HingeLossGen, self).__init__(
+            ent_emb=L.EmbedID(ent_num, emb_sz),
+            rel_emb=L.EmbedID(rel_num, emb_sz),
+            gen=VarMLP([emb_sz * 2, emb_sz, emb_sz])
+        )
+
+        self.emb_sz = emb_sz
+        self.ent_num = ent_num
+        self.rel_num = rel_num
+        self.margin = margin
+        self.norm = norm
+        self.rel_emb.W.data = self.normalize_embedding(self.rel_emb.W.data)
+
+    @staticmethod
+    def normalize_embedding(x, eps=1e-7, axis=1):
+        xp = chainer.cuda.get_array_module(x)
+        norm = xp.linalg.norm(x, axis=axis) + eps
+        norm = xp.expand_dims(norm, axis=axis)
+        return x / norm
+
+    def __call__(self, h, r, t):
+        self.ent_emb.W.data = self.normalize_embedding(self.ent_emb.W.data)
+
+        xp = chainer.cuda.get_array_module(h)
+        bsz = h.shape[0]
+        h = self.ent_emb(h).reshape(bsz, -1)
+        r = self.rel_emb(r).reshape(bsz, -1)
+        t = self.ent_emb(t).reshape(bsz, -1)
+
+        half = bsz / 2
+        h_corrupted = xp.random.randint(1, self.ent_num + 1, size=(half, 1))
+        t_corrupted = xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1))
+        h_corrupted = self.ent_emb(h_corrupted).reshape(half, -1)
+        t_corrupted = self.ent_emb(t_corrupted).reshape(bsz - half, -1)
+
+        t_tilde = self.gen(F.concat([h, r]))
+        t_tilde_head_currupted = self.gen(F.concat([h_corrupted, r[:half]]))
+
+        if self.norm == 1:
+            # L1 norm
+            dis_pos = F.sum(F.absolute(t_tilde - t), axis=1)
+            dis_neg_h = F.sum(F.absolute(t_tilde_head_currupted - t[:half]), axis=1)
+            dis_neg_t = F.sum(F.absolute(t_tilde[half:] - t_corrupted), axis=1)
+        else:
+            # L2 norm
+            dis_pos = F.sqrt(F.batch_l2_norm_squared(t_tilde - t))
+            dis_neg_h = F.sqrt(F.batch_l2_norm_squared(t_tilde_head_currupted - t[:half]))
+            dis_neg_t = F.sqrt(F.batch_l2_norm_squared(t_tilde[half:] - t_corrupted))
+
+        dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0) # 1:1 size for corrupted heads and tails
+
+        loss = F.sum(F.relu(self.margin + dis_pos - dis_neg))
+        chainer.report({'loss': loss})
+        return loss
+
+    def run_gen(self, h, r):
+        xp = chainer.cuda.get_array_module(h)
+        bsz = h.shape[0]
+        h = self.ent_emb(h).reshape(bsz, -1)
+        r = self.rel_emb(r).reshape(bsz, -1)
+        t_tilde = self.gen(F.concat([h, r]))
+        return t_tilde
+
+    @staticmethod
+    def create_hinge_gen(emb_sz, vocab_ent, vocab_rel, gamma, norm=1):
+        m = HingeLossGen(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1, gamma, norm)
+        return m
+
 
 class TransE(chainer.Chain):
     def __init__(self, emb_sz, ent_num, rel_num, margin, norm=1):
@@ -92,7 +178,6 @@ class TransE(chainer.Chain):
         h_corrupted = self.ent_emb(h_corrupted).reshape(half, -1)
         t_corrupted = self.ent_emb(t_corrupted).reshape(bsz - half, -1)
 
-
         if self.norm == 1:
             # L1 norm
             dis_pos = F.sum(F.absolute(h + r - t), axis=1)
@@ -106,7 +191,7 @@ class TransE(chainer.Chain):
 
         dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0) # 1:1 size for corrupted heads and tails
 
-        loss = F.sum(F.relu(self.margin + dis_pos - dis_neg))
+        loss = F.average(F.relu(self.margin + dis_pos - dis_neg))
         chainer.report({'loss': loss})
         return loss
 
