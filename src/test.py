@@ -24,7 +24,10 @@ def main():
     # chainer.serializers.load_npz(args.models[0], transE)
     # run_ranking_test(TransE_Scorer, transE, vocab_ent, test_data)
 
-    gen = models.HingeLossGen.create_hinge_gen(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
+    # gen = models.HingeLossGen.create_hinge_gen(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
+    # chainer.serializers.load_npz(args.models[0], gen)
+
+    gen = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
     chainer.serializers.load_npz(args.models[0], gen)
 
     xp = np
@@ -34,7 +37,8 @@ def main():
         xp = cupy
         gen.to_gpu(config.DEVICE)
 
-    run_ranking_test(HingeGen_Scorer(gen, xp), vocab_ent, test_data)
+    # run_ranking_test(HingeGen_Scorer(gen, xp), vocab_ent, test_data)
+    run_ranking_test(LSGAN_Scorer(gen, None, xp), vocab_ent, test_data)
 
 
 class TransE_Scorer(object):
@@ -76,7 +80,15 @@ class LSGAN_Scorer(object):
         self.d = d
         self.xp = xp
 
-        pass
+    def set_candidate_t(self, candidate_t):
+        self.bsz = candidate_t.shape[0]
+        self.ct_emb = self.g.embed_entity(candidate_t).data
+
+    def __call__(self, h, r):
+        t_tilde = self.g(h, r).data
+        values = self.xp.linalg.norm(t_tilde - self.ct_emb, axis=1)
+        scores = chainer.cuda.to_cpu(values)
+        return scores
 
 
 def run_ranking_test(scorer, vocab_ent, test_data):
