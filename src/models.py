@@ -34,7 +34,7 @@ class VarMLP(chainer.ChainList):
     def __call__(self, x):
         hidden = x
         for i, link in enumerate(self.children()):
-            hidden = F.relu(link(hidden)) if i < len(self) - 1 else link(hidden)
+            hidden = selu(link(hidden)) if i < len(self) - 1 else link(hidden)
         return hidden
 
 
@@ -43,17 +43,15 @@ class Generator(chainer.Chain):
         super(Generator, self).__init__(
             ent_emb=L.EmbedID(ent_num, in_dim),
             rel_emb=L.EmbedID(rel_num, in_dim),
-            mlp1=MLP(in_dim * 2, in_dim),
-            mlp2=MLP(in_dim, in_dim),
+            mlp=VarMLP([in_dim * 2, in_dim, in_dim])
         )
 
     def __call__(self, h, r):
         h_emb = self.ent_emb(h).reshape(h.shape[0], -1)
         r_emb = self.rel_emb(r).reshape(h.shape[0], -1)
         x = F.concat((h_emb, r_emb))
-        x1 = F.relu(self.mlp1(x))
-        x2 = self.mlp2(x1)
-        return x2
+        x = self.mlp(x)
+        return x
 
     def embed_entity(self, e):
         return self.ent_emb(e).reshape(e.shape[0], -1)
@@ -204,15 +202,12 @@ class Discriminator(chainer.Chain):
     def __init__(self, in_dim):
         super(Discriminator, self).__init__(
             # for h, r, and t
-            mlp1=MLP(in_dim * 3, in_dim),
-            mlp2=MLP(in_dim, 1)
+            mlp=VarMLP([in_dim * 3, in_dim, in_dim, 1]),
         )
 
     def __call__(self, h_emb, r_emb, t_emb):
         x = F.concat((h_emb, r_emb, t_emb))
-        h1 = F.relu(self.mlp1(x))
-        h2 = self.mlp2(h1)
-        return h2
+        return self.mlp(x)
 
 class BilinearDiscriminator(chainer.Chain):
     def __init__(self, in_dim):
@@ -224,6 +219,32 @@ class BilinearDiscriminator(chainer.Chain):
         x = F.concat((h_emb, r_emb, t_emb)) # batch * embedding
         return self.bl(x, x)
 
+# copied selu source code from chainer 3.0.0rc
+from chainer.functions.activation import elu
+
+
+def selu(x,
+         alpha=1.6732632423543772848170429916717,
+         scale=1.0507009873554804934193349852946):
+    """Scaled Exponential Linear Unit function.
+    For parameters :math:`\\alpha` and :math:`\\lambda`, it is expressed as
+    .. math::
+        f(x) = \\lambda \\left \\{ \\begin{array}{ll}
+        x & {\\rm if}~ x \\ge 0 \\\\
+        \\alpha (\\exp(x) - 1) & {\\rm if}~ x < 0,
+        \\end{array} \\right.
+    See: https://arxiv.org/abs/1706.02515
+    Args:
+        x (:class:`~chainer.Variable` or :class:`numpy.ndarray` or \
+        :class:`cupy.ndarray`):
+            Input variable. A :math:`(s_1, s_2, ..., s_N)`-shaped float array.
+        alpha (float): Parameter :math:`\\alpha`.
+        scale (float): Parameter :math:`\\lambda`.
+    Returns:
+        ~chainer.Variable: Output variable. A
+        :math:`(s_1, s_2, ..., s_N)`-shaped float array.
+    """
+    return scale * elu.elu(x, alpha=alpha)
 
 
 
