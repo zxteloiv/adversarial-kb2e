@@ -16,6 +16,8 @@ OPT_D_EPOCH = 20 # how many epochs are needed for training a discriminator in on
 SGD_LR = 0.01 # learning rate for SGD only
 TRANSE_GAMMA = 1
 TRANSE_NORM = 2 # L1 norm =1, L2 norm =2
+WEIGHT_DECAY = 0.1
+HINGE_LOSS_WEIGHT = 1
 
 # model conf
 EMBED_SZ = 50

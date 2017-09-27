@@ -70,4 +70,57 @@ class WGANUpdator(chainer.training.StandardUpdater):
         chainer.report({"loss_g": loss_g, "w-distance": -loss_gan, "penalty": loss_penalty})
 
 
+class LSGANUpdater(chainer.training.StandardUpdater):
+    def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, hinge_loss_weight=1):
+        super(LSGANUpdater, self).__init__(data_iter, {"opt_g": opt_g, "opt_d": opt_d}, device=device)
+        self.d_epoch = d_epoch
+        self.g = opt_g.target
+        self.d = opt_d.target
+        self.hinge_loss_weight = hinge_loss_weight
+
+    def update_core(self):
+        data_iter = self.get_iterator('main')
+
+        # train the discriminator
+        final_hinge_loss, final_supervision = 0, 0
+        for epoch in xrange(self.d_epoch):
+            batch = data_iter.__next__()
+            h, r, t = self.converter(batch, self.device)
+            t_tilde = self.g(h, r)
+
+            # TODO: check if the embedding are also updated after one discriminator iteration
+            h_emb, t_emb = map(self.g.embed_entity, (h, t))
+            r_emb = self.g.embed_relation(r)
+            supervision_loss = self.d(h_emb, r_emb, t_emb)
+
+            distance = lambda x, y: F.sqrt(F.batch_l2_norm_squared(x - y)).reshape(-1, 1)
+            hinge_loss = F.relu(distance(t_tilde, t_emb)
+                                + self.d(h_emb, r_emb, t_emb)
+                                - self.d(h_emb, r_emb, t_tilde))
+            hinge_loss *= self.hinge_loss_weight
+
+            loss_d = F.average(supervision_loss + hinge_loss)
+            self.d.cleargrads()
+            loss_d.backward()
+            self.get_optimizer('opt_d').update()
+
+            final_hinge_loss = hinge_loss
+            final_supervision = supervision_loss
+
+        batch = data_iter.__next__()
+        h, r, _ = self.converter(batch, self.device)
+        h_emb = self.g.embed_entity(h)
+        r_emb = self.g.embed_relation(r)
+        loss_g = F.average(self.d(h_emb, r_emb, self.g(h, r)))
+        self.g.cleargrads()
+        loss_g.backward()
+        self.get_optimizer('opt_g').update()
+
+        chainer.report({"loss_g": loss_g, "loss_d": loss_d,
+                        "hinge_loss_d": final_hinge_loss, "supervision_loss": final_supervision})
+
+
+
+
+
 
