@@ -26,19 +26,25 @@ def main():
 
     gen = models.HingeLossGen.create_hinge_gen(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
     chainer.serializers.load_npz(args.models[0], gen)
-    run_ranking_test(HingeGen_Scorer, gen, vocab_ent, test_data)
+
+    xp = np
+    if config.DEVICE >= 0:
+        chainer.cuda.get_device_from_id(config.DEVICE).use()
+        from chainer.cuda import cupy
+        xp = cupy
+        gen.to_gpu(config.DEVICE)
+
+    run_ranking_test(HingeGen_Scorer(gen, xp), vocab_ent, test_data)
 
 
 class TransE_Scorer(object):
-    def __init__(self, model, candidate_t):
+    def __init__(self, model, xp):
         self.transE = model
+        self.xp = xp
+
+    def set_candidate_t(self, candidate_t):
         self.bsz = candidate_t.shape[0]
-        self.ct_emb = self.transE.ent_emb(candidate_t).reshape(self.bsz, -1).data
-        self.xp = np
-        if config.DEVICE >= 0:
-            chainer.cuda.get_device_from_id(config.DEVICE).use()
-            from chainer.cuda import cupy
-            self.xp = cupy
+        self.ct_emb = self.model.ent_emb(candidate_t).reshape(self.bsz, -1).data
 
     def __call__(self, h, r):
         h_emb = self.transE.ent_emb(h).data # shape of (batchsz=1, embedding_size)
@@ -49,15 +55,13 @@ class TransE_Scorer(object):
         return scores
 
 class HingeGen_Scorer(object):
-    def __init__(self, model, candidate_t):
+    def __init__(self, model, xp):
         self.model = model
+        self.xp = xp
+
+    def set_candidate_t(self, candidate_t):
         self.bsz = candidate_t.shape[0]
         self.ct_emb = self.model.ent_emb(candidate_t).reshape(self.bsz, -1).data
-        self.xp = np
-        if config.DEVICE >= 0:
-            chainer.cuda.get_device_from_id(config.DEVICE).use()
-            from chainer.cuda import cupy
-            self.xp = cupy
 
     def __call__(self, h, r):
         t_tilde = self.model.run_gen(h, r).data
@@ -66,19 +70,23 @@ class HingeGen_Scorer(object):
         return scores
 
 
-def run_ranking_test(scorer_type, model, vocab_ent, test_data):
-    xp = np
-    if config.DEVICE >= 0:
-        chainer.cuda.get_device_from_id(config.DEVICE).use()
-        model.to_gpu(config.DEVICE)
-        from chainer.cuda import cupy
-        xp = cupy
+class LSGAN_Scorer(object):
+    def __init__(self, g, d, xp):
+        self.g = g
+        self.d = d
+        self.xp = xp
+
+        pass
+
+
+def run_ranking_test(scorer, vocab_ent, test_data):
+    xp = scorer.xp
 
     data_iter = chainer.iterators.SerialIterator(test_data, batch_size=1, repeat=False, shuffle=False)
     candidate_t = xp.arange(1, len(vocab_ent) + 1, dtype=xp.int32)
     if config.DEVICE >= 0:
         candidate_t = chainer.dataset.to_device(config.DEVICE, candidate_t) # shape of (#entity_num, embedding_size)
-    scorer = scorer_type(model, candidate_t)
+    scorer.set_candidate_t(candidate_t)
 
     avgrank, hits10, count = 0, 0, 0
     for i, batch in enumerate(data_iter):

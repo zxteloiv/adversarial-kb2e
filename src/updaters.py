@@ -82,7 +82,6 @@ class LSGANUpdater(chainer.training.StandardUpdater):
         data_iter = self.get_iterator('main')
 
         # train the discriminator
-        final_hinge_loss, final_supervision = 0, 0
         for epoch in xrange(self.d_epoch):
             batch = data_iter.__next__()
             h, r, t = self.converter(batch, self.device)
@@ -99,13 +98,12 @@ class LSGANUpdater(chainer.training.StandardUpdater):
                                 - self.d(h_emb, r_emb, t_tilde))
             hinge_loss *= self.hinge_loss_weight
 
-            loss_d = F.average(supervision_loss + hinge_loss)
+            supervision_loss = F.average(supervision_loss)
+            hinge_loss = F.average(hinge_loss)
+            loss_d = supervision_loss + hinge_loss
             self.d.cleargrads()
             loss_d.backward()
             self.get_optimizer('opt_d').update()
-
-            final_hinge_loss = hinge_loss
-            final_supervision = supervision_loss
 
         batch = data_iter.__next__()
         h, r, _ = self.converter(batch, self.device)
@@ -117,7 +115,7 @@ class LSGANUpdater(chainer.training.StandardUpdater):
         self.get_optimizer('opt_g').update()
 
         chainer.report({"loss_g": loss_g, "loss_d": loss_d,
-                        "hinge_loss_d": final_hinge_loss, "supervision_loss": final_supervision})
+                        "hinge_loss_d": hinge_loss, "supervision_loss": supervision_loss})
 
 
 
