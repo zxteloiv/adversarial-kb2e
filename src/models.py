@@ -46,7 +46,11 @@ class Generator(chainer.Chain):
             mlp=VarMLP([in_dim * 2, in_dim, in_dim])
         )
 
-    def __call__(self, h, r):
+        self.ent_num = ent_num
+        self.rel_num = rel_num
+
+    def __call__(self, *args, **kwargs):
+        h, r = args
         h_emb = self.ent_emb(h).reshape(h.shape[0], -1)
         r_emb = self.rel_emb(r).reshape(h.shape[0], -1)
         x = F.concat((h_emb, r_emb))
@@ -65,6 +69,72 @@ class Generator(chainer.Chain):
         # thus make a spare embedding for dummy id 0
         g = Generator(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1)
         return g
+
+
+class PretrainedGenerator(Generator):
+    def __init__(self, in_dim, ent_num, rel_num):
+        super(PretrainedGenerator, self).__init__(in_dim, ent_num, rel_num)
+
+    def __call__(self, *args, **kwargs):
+        h, r, t = args
+        self.ent_emb.W.data = HingeLossGen.normalize_embedding(self.ent_emb.W.data)
+
+        xp = chainer.cuda.get_array_module(h)
+        bsz = h.shape[0]
+        h = self.ent_emb(h).reshape(bsz, -1)
+        r = self.rel_emb(r).reshape(bsz, -1)
+        t = self.ent_emb(t).reshape(bsz, -1)
+
+        half = bsz / 2
+        h_corrupted = xp.random.randint(1, self.ent_num + 1, size=(half, 1))
+        t_corrupted = xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1))
+        h_corrupted = self.ent_emb(h_corrupted).reshape(half, -1)
+        t_corrupted = self.ent_emb(t_corrupted).reshape(bsz - half, -1)
+
+        t_tilde = self.mlp(F.concat([h, r]))
+        t_tilde_head_currupted = self.mlp(F.concat([h_corrupted, r[:half]]))
+
+        # L2 norm
+        dis_pos = F.sqrt(F.batch_l2_norm_squared(t_tilde - t))
+        dis_neg_h = F.sqrt(F.batch_l2_norm_squared(t_tilde_head_currupted - t[:half]))
+        dis_neg_t = F.sqrt(F.batch_l2_norm_squared(t_tilde[half:] - t_corrupted))
+
+        dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0) # 1:1 size for corrupted heads and tails
+
+        loss = F.sum(F.relu(1 + dis_pos - dis_neg)) # margin fixed
+        chainer.report({'loss': loss})
+        return loss
+
+    @staticmethod
+    def create_generator(emb_sz, vocab_ent, vocab_rel):
+        # embedding link starts from 0, but token id starts from 1,
+        # thus make a spare embedding for dummy id 0
+        g = PretrainedGenerator(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1)
+        return g
+
+
+class Discriminator(chainer.Chain):
+    def __init__(self, in_dim):
+        super(Discriminator, self).__init__(
+            # for h, r, and t
+            mlp=VarMLP([in_dim * 3, in_dim, in_dim, 1]),
+        )
+        for link in self.mlp:
+            link.W.data = HingeLossGen.normalize_embedding(link.W.data, axis=0)
+
+    def __call__(self, h_emb, r_emb, t_emb):
+        x = F.concat((h_emb, r_emb, t_emb))
+        return F.sigmoid(self.mlp(x))
+
+class BilinearDiscriminator(chainer.Chain):
+    def __init__(self, in_dim):
+        super(BilinearDiscriminator, self).__init__(
+            bl=L.Bilinear(in_dim * 3, in_dim * 3, 1)
+        )
+
+    def __call__(self, h_emb, r_emb, t_emb):
+        x = F.concat((h_emb, r_emb, t_emb)) # batch * embedding
+        return self.bl(x, x)
 
 
 class HingeLossGen(chainer.Chain):
@@ -198,26 +268,6 @@ class TransE(chainer.Chain):
         m = TransE(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1, gamma, norm)
         return m
 
-class Discriminator(chainer.Chain):
-    def __init__(self, in_dim):
-        super(Discriminator, self).__init__(
-            # for h, r, and t
-            mlp=VarMLP([in_dim * 3, in_dim, in_dim, 1]),
-        )
-
-    def __call__(self, h_emb, r_emb, t_emb):
-        x = F.concat((h_emb, r_emb, t_emb))
-        return self.mlp(x)
-
-class BilinearDiscriminator(chainer.Chain):
-    def __init__(self, in_dim):
-        super(BilinearDiscriminator, self).__init__(
-            bl=L.Bilinear(in_dim * 3, in_dim * 3, 1)
-        )
-
-    def __call__(self, h_emb, r_emb, t_emb):
-        x = F.concat((h_emb, r_emb, t_emb)) # batch * embedding
-        return self.bl(x, x)
 
 # copied selu source code from chainer 3.0.0rc
 from chainer.functions.activation import elu

@@ -92,14 +92,13 @@ class LSGANUpdater(chainer.training.StandardUpdater):
             r_emb = self.g.embed_relation(r)
             supervision_loss = self.d(h_emb, r_emb, t_emb)
 
-            distance = lambda x, y: F.sqrt(F.batch_l2_norm_squared(x - y)).reshape(-1, 1)
-            hinge_loss = F.relu(distance(t_tilde, t_emb)
+            hinge_loss = F.relu(F.batch_l2_norm_squared(t_tilde - t_emb).reshape(-1, 1)
                                 + self.d(h_emb, r_emb, t_emb)
                                 - self.d(h_emb, r_emb, t_tilde))
             hinge_loss *= self.hinge_loss_weight
 
-            supervision_loss = F.average(supervision_loss)
-            hinge_loss = F.average(hinge_loss)
+            supervision_loss = F.sum(supervision_loss)
+            hinge_loss = F.sum(hinge_loss)
             loss_d = supervision_loss + hinge_loss
             self.d.cleargrads()
             loss_d.backward()
@@ -109,7 +108,7 @@ class LSGANUpdater(chainer.training.StandardUpdater):
         h, r, _ = self.converter(batch, self.device)
         h_emb = self.g.embed_entity(h)
         r_emb = self.g.embed_relation(r)
-        loss_g = F.average(self.d(h_emb, r_emb, self.g(h, r)))
+        loss_g = F.sum(self.d(h_emb, r_emb, self.g(h, r)))
         self.g.cleargrads()
         loss_g.backward()
         self.get_optimizer('opt_g').update()

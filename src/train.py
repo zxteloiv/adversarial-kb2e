@@ -18,6 +18,7 @@ def main():
     # trainer = TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer = LSGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    # trainer = LSGAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer.run()
 
 
@@ -59,11 +60,34 @@ def TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     trainer.extend(extensions.snapshot_object(transE, 'transE_iter_{.updater.iteration}'), trigger=(1000, 'iteration'))
     return trainer
 
+def LSGAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
+    gen = models.PretrainedGenerator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
+    if len(sys.argv) > 1:
+        chainer.serializers.load_npz(sys.argv[1], gen)
+
+    if config.DEVICE >= 0:
+        chainer.cuda.get_device_from_id(config.DEVICE).use()
+        gen.to_gpu(config.DEVICE)
+
+    opt = chainer.optimizers.SGD(config.SGD_LR)
+    opt.setup(gen)
+    updater = chainer.training.StandardUpdater(train_iter, opt, device=config.DEVICE)
+    trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
+    trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
+    trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss', 'elapsed_time']))
+    trainer.extend(extensions.snapshot_object(gen, 'gen_iter_{.updater.iteration}'), trigger=(1000, 'iteration'))
+    return trainer
+
 
 def LSGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
 
     generator = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
     discriminator = models.Discriminator(config.EMBED_SZ)
+    if len(sys.argv) > 1:
+        chainer.serializers.load_npz(sys.argv[1], generator)
+    if len(sys.argv) > 2:
+        chainer.serializers.load_npz(sys.argv[2], discriminator)
+
     if config.DEVICE >= 0:
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         generator.to_gpu(config.DEVICE)
@@ -73,8 +97,8 @@ def LSGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     opt_d = chainer.optimizers.Adam(1e-3, 0.5)
     opt_g.setup(generator)
     opt_d.setup(discriminator)
-    opt_g.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY), 'hook_g_weight')
-    opt_d.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY), 'hook_d_weight')
+    # opt_g.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY), 'hook_g_weight')
+    # opt_d.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY), 'hook_d_weight')
 
     updater = updaters.LSGANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.HINGE_LOSS_WEIGHT)
     trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
