@@ -3,6 +3,7 @@
 from __future__ import absolute_import
 import os, argparse, logging
 import chainer
+import chainer.functions as F
 import numpy as np
 
 import config, models
@@ -30,15 +31,22 @@ def main():
     gen = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
     chainer.serializers.load_npz(args.models[0], gen)
 
+    d = None
+    if len(args.models) > 1:
+        d = models.Discriminator(config.EMBED_SZ)
+        chainer.serializers.load_npz(args.models[1], d)
+
     xp = np
     if config.DEVICE >= 0:
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         from chainer.cuda import cupy
         xp = cupy
         gen.to_gpu(config.DEVICE)
+        if d is not None:
+            d.to_gpu(config.DEVICE)
 
     # run_ranking_test(HingeGen_Scorer(gen, xp), vocab_ent, test_data)
-    run_ranking_test(LSGAN_Scorer(gen, None, xp), vocab_ent, test_data)
+    run_ranking_test(GAN_Scorer(gen, d, xp), vocab_ent, test_data)
 
 
 class TransE_Scorer(object):
@@ -74,7 +82,7 @@ class HingeGen_Scorer(object):
         return scores
 
 
-class LSGAN_Scorer(object):
+class GAN_Scorer(object):
     def __init__(self, g, d, xp):
         self.g = g
         self.d = d
@@ -82,11 +90,22 @@ class LSGAN_Scorer(object):
 
     def set_candidate_t(self, candidate_t):
         self.bsz = candidate_t.shape[0]
-        self.ct_emb = self.g.embed_entity(candidate_t).data
+        self.ct_emb = self.g.embed_entity(candidate_t)
 
     def __call__(self, h, r):
-        t_tilde = self.g(h, r).data
-        values = self.xp.linalg.norm(t_tilde - self.ct_emb, axis=1)
+        # return self.get_g_score(h, r)
+        return self.get_d_score(h, r)
+
+    def get_d_score(self, h, r):
+        h_emb = F.stack([self.g.embed_entity(h)] * self.bsz).reshape(self.bsz, -1)
+        r_emb = F.stack([self.g.embed_relation(r)] * self.bsz).reshape(self.bsz, -1)
+        values = self.d(h_emb, r_emb, self.ct_emb).reshape(-1).data
+        scores = chainer.cuda.to_cpu(values)
+        return scores
+
+    def get_g_score(self, h, r):
+        t_tilde = self.g(h, r)
+        values = self.xp.linalg.norm(t_tilde.data - self.ct_emb.data, axis=1)
         scores = chainer.cuda.to_cpu(values)
         return scores
 

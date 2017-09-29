@@ -17,8 +17,9 @@ def main():
     # trainer = WGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    trainer = LSGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = LSGAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    # trainer = LSGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer.run()
 
 
@@ -76,6 +77,38 @@ def LSGAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
     trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss', 'elapsed_time']))
     trainer.extend(extensions.snapshot_object(gen, 'gen_iter_{.updater.iteration}'), trigger=(1000, 'iteration'))
+    return trainer
+
+
+def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
+
+    generator = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
+    discriminator = models.Discriminator(config.EMBED_SZ)
+    if len(sys.argv) > 1:
+        chainer.serializers.load_npz(sys.argv[1], generator)
+    if len(sys.argv) > 2:
+        chainer.serializers.load_npz(sys.argv[2], discriminator)
+
+    if config.DEVICE >= 0:
+        chainer.cuda.get_device_from_id(config.DEVICE).use()
+        generator.to_gpu(config.DEVICE)
+        discriminator.to_gpu(config.DEVICE)
+
+    opt_g = chainer.optimizers.Adam(1e-3, 0.5)
+    opt_d = chainer.optimizers.Adam(1e-3, 0.5)
+    opt_g.setup(generator)
+    opt_d.setup(discriminator)
+    # opt_g.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY), 'hook_g_weight')
+    # opt_d.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY), 'hook_d_weight')
+
+    updater = updaters.GANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH)
+    trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
+    trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
+    trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss_g','loss_d',
+                                           'loss_real', 'loss_gen', 'elapsed_time']))
+    trainer.extend(extensions.snapshot_object(generator, 'gen_iter_{.updater.iteration}'), trigger=(100, 'iteration'))
+    trainer.extend(extensions.snapshot_object(discriminator, 'd_iter_{.updater.iteration}'), trigger=(100, 'iteration'))
+
     return trainer
 
 
