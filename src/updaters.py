@@ -134,13 +134,20 @@ class GANUpdater(chainer.training.StandardUpdater):
 
             h_emb, t_emb = map(self.g.embed_entity, (h, t))
             r_emb = self.g.embed_relation(r)
-            loss_real = -F.log(self.d(h_emb, r_emb, t_emb))
-
             t_tilde = self.g(h, r)
+
+            # traditional GAN
+            loss_real = -F.log(self.d(h_emb, r_emb, t_emb))
             loss_gen = -F.log(1 - self.d(h_emb, r_emb, t_tilde) + 1e-7)
+
+            # # least square GAN
+            # loss_real = F.batch_l2_norm_squared(self.d(h_emb, r_emb, t_emb) - 1) / 2
+            # loss_gen = F.batch_l2_norm_squared(self.d(h_emb, r_emb, t_tilde)) / 2
 
             loss_real = F.sum(loss_real)
             loss_gen = F.sum(loss_gen)
+            # loss_real = F.average(loss_real)
+            # loss_gen = F.average(loss_gen)
 
             loss_d = loss_real + loss_gen
             self.d.cleargrads()
@@ -151,8 +158,17 @@ class GANUpdater(chainer.training.StandardUpdater):
         h, r, _ = self.converter(batch, self.device)
         h_emb = self.g.embed_entity(h)
         r_emb = self.g.embed_relation(r)
-        loss_g = F.sum(self.d(h_emb, r_emb, self.g(h, r)))
+
         self.g.cleargrads()
+
+        # traditional GAN
+        loss_g = F.log(1 - self.d(h_emb, r_emb, self.g(h, r)) + 1e-7)
+        loss_g = F.sum(loss_g)
+
+        # # least square GAN
+        # loss_g = F.batch_l2_norm_squared(self.d(h_emb, r_emb, self.g(h, r)) - 1) / 2
+        # loss_g = F.sum(loss_g)
+
         loss_g.backward()
         self.get_optimizer('opt_g').update()
 

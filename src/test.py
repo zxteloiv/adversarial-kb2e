@@ -93,8 +93,8 @@ class GAN_Scorer(object):
         self.ct_emb = self.g.embed_entity(candidate_t)
 
     def __call__(self, h, r):
-        # return self.get_g_score(h, r)
-        return self.get_d_score(h, r)
+        return self.get_g_score(h, r)
+        # return self.get_d_score(h, r)
 
     def get_d_score(self, h, r):
         h_emb = F.stack([self.g.embed_entity(h)] * self.bsz).reshape(self.bsz, -1)
@@ -134,8 +134,8 @@ def run_ranking_test(scorer, vocab_ent, test_data):
         count += 1
 
         if i % 1000 == 0:
-            logging.info('%d testing data processed, temp rank: %d, hits10: %d, avgrank: %f' % (
-                count, avgrank, hits10, avgrank / count))
+            logging.info('%d testing data processed, temp rank: %d, hits10: %d, avgrank: %.4f' % (
+                count, avgrank, hits10, avgrank / float(count)))
 
     avgrank /= count * 1.0
     hits10 /= count * 1.0
