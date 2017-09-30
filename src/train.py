@@ -14,11 +14,9 @@ def main():
     dataset = map(lambda x: mod_dataset.load_corpus(x, vocab_ent, vocab_rel), (config.TRAIN_DATA, config.VALID_DATA))
     train_iter, valid_iter = map(lambda x: chainer.iterators.SerialIterator(x, batch_size=config.BATCH_SZ), dataset)
 
-    # trainer = WGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    # trainer = LSGAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    # trainer = LSGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    # trainer = GAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer.run()
 
@@ -62,7 +60,7 @@ def TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
                    trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
     return trainer
 
-def LSGAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
+def GAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     gen = models.PretrainedGenerator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
     if len(sys.argv) > 1:
         chainer.serializers.load_npz(sys.argv[1], gen)
@@ -98,17 +96,20 @@ def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
 
     opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt_d = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
-    # opt_g = chainer.optimizers.RMSprop()
-    # opt_d = chainer.optimizers.RMSprop()
     opt_g.setup(generator)
     opt_d.setup(discriminator)
 
-    updater = updaters.GANUpdater(train_iter, opt_g, opt_d, config.DEVICE,
-                                  config.OPT_D_EPOCH, config.OPT_G_EPOCH)
+    # updater = updaters.WGANUpdator(train_iter, opt_g, opt_d, device=config.DEVICE, d_epoch=config.OPT_D_EPOCH,
+    #                                g_epoch=config.OPT_G_EPOCH, penalty_coeff=config.PENALTY_COEFF)
+    # updater = updaters.LSGANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH,
+    #                                 config.HINGE_LOSS_WEIGHT)
+    # updater = updaters.LeastSquareGANUpdater(train_iter, opt_g, opt_d, config.DEVICE,
+    #                                          config.OPT_D_EPOCH, config.OPT_G_EPOCH)
+    updater = updaters.GANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH)
+
     trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
-    trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss_g','loss_d',
-                                           'loss_real', 'loss_gen', 'elapsed_time']))
+    trainer.extend(extensions.PrintReport(updater.get_report_list()))
     trainer.extend(extensions.snapshot_object(generator, 'gen_iter_{.updater.iteration}'),
                    trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
     trainer.extend(extensions.snapshot_object(discriminator, 'd_iter_{.updater.iteration}'),
@@ -116,70 +117,6 @@ def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
 
     return trainer
 
-
-def LSGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
-
-    generator = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
-    discriminator = models.Discriminator(config.EMBED_SZ)
-    if len(sys.argv) > 1:
-        chainer.serializers.load_npz(sys.argv[1], generator)
-    if len(sys.argv) > 2:
-        chainer.serializers.load_npz(sys.argv[2], discriminator)
-
-    if config.DEVICE >= 0:
-        chainer.cuda.get_device_from_id(config.DEVICE).use()
-        generator.to_gpu(config.DEVICE)
-        discriminator.to_gpu(config.DEVICE)
-
-    opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
-    opt_d = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
-    opt_g.setup(generator)
-    opt_d.setup(discriminator)
-    # opt_g.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY), 'hook_g_weight')
-    # opt_d.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY), 'hook_d_weight')
-
-    updater = updaters.LSGANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.HINGE_LOSS_WEIGHT)
-    trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
-    trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
-    trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss_g', 'loss_d',
-                                           'supervision_loss', 'hinge_loss_d', 'elapsed_time']))
-    trainer.extend(extensions.snapshot_object(generator, 'gen_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-    trainer.extend(extensions.snapshot_object(discriminator, 'd_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-
-    return trainer
-
-
-def WGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
-
-    generator = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
-    discriminator = models.Discriminator(config.EMBED_SZ)
-    if config.DEVICE >= 0:
-        chainer.cuda.get_device_from_id(config.DEVICE).use()
-        generator.to_gpu(config.DEVICE)
-        discriminator.to_gpu(config.DEVICE)
-
-    opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
-    opt_d = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
-    # opt_g = chainer.optimizers.RMSprop()
-    # opt_d = chainer.optimizers.RMSprop()
-    opt_g.setup(generator)
-    opt_d.setup(discriminator)
-
-    updater = updaters.WGANUpdator(train_iter, opt_g, opt_d,
-                                   device=config.DEVICE, d_epoch=config.OPT_D_EPOCH, penalty_coeff=config.PENALTY_COEFF)
-
-    trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
-
-    trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
-    trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss_g', 'w-distance', 'penalty', 'elapsed_time']))
-    trainer.extend(extensions.snapshot_object(generator, 'gen_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-    trainer.extend(extensions.snapshot_object(discriminator, 'd_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-
-    return trainer
 
 def get_trainer_out_path():
     return os.path.join(config.MODEL_PATH, datetime.datetime.now().strftime('result-%Y-%m-%d-%H-%M-%S'))
