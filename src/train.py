@@ -103,7 +103,8 @@ def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     opt_g.setup(generator)
     opt_d.setup(discriminator)
 
-    updater = updaters.GANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH)
+    updater = updaters.GANUpdater(train_iter, opt_g, opt_d, config.DEVICE,
+                                  config.OPT_D_EPOCH, config.OPT_G_EPOCH)
     trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
     trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss_g','loss_d',
