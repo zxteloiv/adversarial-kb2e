@@ -101,11 +101,11 @@ def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
 
     # updater = updaters.WGANUpdator(train_iter, opt_g, opt_d, device=config.DEVICE, d_epoch=config.OPT_D_EPOCH,
     #                                g_epoch=config.OPT_G_EPOCH, penalty_coeff=config.PENALTY_COEFF)
-    # updater = updaters.LSGANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH,
-    #                                 config.HINGE_LOSS_WEIGHT)
+    updater = updaters.LSGANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH,
+                                    config.HINGE_LOSS_WEIGHT)
     # updater = updaters.LeastSquareGANUpdater(train_iter, opt_g, opt_d, config.DEVICE,
     #                                          config.OPT_D_EPOCH, config.OPT_G_EPOCH)
-    updater = updaters.GANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH)
+    # updater = updaters.GANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH)
 
     trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))

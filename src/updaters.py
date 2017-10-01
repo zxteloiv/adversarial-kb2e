@@ -48,6 +48,7 @@ class AbstractGANUpdator(chainer.training.StandardUpdater):
     def get_report_list():
         return ['epoch', 'iteration', 'elapsed_time']
 
+
 class WGANUpdator(AbstractGANUpdator):
     def __init__(self, iterator, opt_g, opt_d, device, d_epoch=10, g_epoch=1, penalty_coeff=10):
         super(WGANUpdator, self).__init__(iterator, opt_g, opt_d, device, d_epoch=10, g_epoch=1)
@@ -103,42 +104,72 @@ class WGANUpdator(AbstractGANUpdator):
 
 
 class LSGANUpdater(AbstractGANUpdator):
-    def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, g_epoch=1, hinge_loss_weight=1):
+    def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, g_epoch=1, hinge_loss_weight=1, penalty_coeff=1):
         super(LSGANUpdater, self).__init__(data_iter, opt_g, opt_d, device, d_epoch, g_epoch)
         self.hinge_loss_weight = hinge_loss_weight
+        self.penalty_coeff = penalty_coeff
 
     def update_d(self, h, r, t):
         t_tilde = self.g(h, r)
 
+        # loss for real examples
         h_emb, t_emb = map(self.g.embed_entity, (h, t))
         r_emb = self.g.embed_relation(r)
-        supervision_loss = self.d(h_emb, r_emb, t_emb)
+        loss_real = self.d(h_emb, r_emb, t_emb)
 
+        # hinge loss for generated loss and the distance margin
         hinge_loss = F.relu(F.batch_l2_norm_squared(t_tilde - t_emb).reshape(-1, 1)
                             + self.d(h_emb, r_emb, t_emb)
                             - self.d(h_emb, r_emb, t_tilde))
         hinge_loss *= self.hinge_loss_weight
 
-        supervision_loss = F.sum(supervision_loss)
-        hinge_loss = F.sum(hinge_loss)
-        loss_d = supervision_loss + hinge_loss
+        # Lipschitz Regularization for discriminator
+        epsilon, delta = self.xp.random.uniform(0.0, 1.0, (h.shape[0], 1)), 1e-7
+        t_hat = epsilon * t_emb + (1 - epsilon) * t_tilde
+        t_hat_delta = t_hat + delta
+        delta_approx = F.sqrt(F.batch_l2_norm_squared(t_hat_delta - t_hat)).reshape(-1, 1)
+        derivative = (self.d(h_emb, r_emb, t_hat_delta) - self.d(h_emb, r_emb, t_hat)) / delta_approx + delta
+        penalty = ((F.sqrt(F.batch_l2_norm_squared(derivative)) - 1) ** 2) * self.penalty_coeff
+
+        loss_real = F.average(loss_real)
+        hinge_loss = F.average(hinge_loss)
+        loss_d_penalty = F.average(penalty)
+
+        loss_d = loss_real + hinge_loss + loss_d_penalty
         self.d.cleargrads()
         loss_d.backward()
         self.get_optimizer('opt_d').update()
-        self.add_to_report(loss_d=loss_d, supervision_loss=supervision_loss, hinge_loss=hinge_loss)
+        self.add_to_report(loss_d=loss_d, loss_real=loss_real, hinge_loss=hinge_loss, d_penalty=loss_d_penalty)
 
     def update_g(self, h, r, t):
+        # generator loss given a fixed discriminator
         h_emb = self.g.embed_entity(h)
         r_emb = self.g.embed_relation(r)
-        loss_g = F.sum(self.d(h_emb, r_emb, self.g(h, r)))
+        t_tilde = self.g(h, r)
+        loss_gen = F.average(self.d(h_emb, r_emb, t_tilde))
+
+        # Lipschitz Regularization for generator
+        epsilon, delta = self.xp.random.uniform(0.0, 1.0, (h.shape[0], 1)), 1e-7
+        t_emb = self.g.embed_entity(t)
+        t_hat = epsilon * t_emb + (1 - epsilon) * t_tilde
+        t_hat_delta = t_hat + delta
+        delta_approx = F.sqrt(F.batch_l2_norm_squared(t_hat_delta - t_hat)).reshape(-1, 1)
+        derivative = (self.d(h_emb, r_emb, t_hat_delta) - self.d(h_emb, r_emb, t_hat)) / delta_approx + delta
+        penalty = ((F.sqrt(F.batch_l2_norm_squared(derivative)) - 1) ** 2) * self.penalty_coeff
+        loss_g_penalty = F.average(penalty)
+
+        loss_g = loss_gen + loss_g_penalty
         self.g.cleargrads()
         loss_g.backward()
         self.get_optimizer('opt_g').update()
-        self.add_to_report(loss_g=loss_g)
+        self.add_to_report(loss_g=loss_g, loss_gen=loss_gen, g_penalty=loss_g_penalty)
 
     @staticmethod
     def get_report_list():
-        return ['epoch', 'iteration', 'loss_g', 'loss_d', 'supervision_loss', 'hinge_loss_d', 'elapsed_time']
+        return ['epoch', 'iteration', 'loss_g', 'loss_gen', 'g_penalty',
+                'loss_d', 'loss_real', 'hinge_loss', 'd_penalty',
+                'elapsed_time']
+
 
 class GANUpdater(AbstractGANUpdator):
     """the most basic GAN"""
