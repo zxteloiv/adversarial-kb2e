@@ -43,7 +43,7 @@ class Generator(chainer.Chain):
         super(Generator, self).__init__(
             ent_emb=L.EmbedID(ent_num, in_dim),
             rel_emb=L.EmbedID(rel_num, in_dim),
-            mlp=VarMLP([in_dim * 2, in_dim, in_dim])
+            mlp=VarMLP([in_dim * 2, in_dim, in_dim, in_dim, in_dim, in_dim])
         )
 
         self.ent_num = ent_num
@@ -117,7 +117,7 @@ class Discriminator(chainer.Chain):
     def __init__(self, in_dim):
         super(Discriminator, self).__init__(
             # for h, r, and t
-            mlp=VarMLP([in_dim * 3, in_dim, in_dim, 1]),
+            mlp=VarMLP([in_dim * 3, in_dim, in_dim, in_dim / 2, in_dim / 2, 1]),
         )
         for link in self.mlp:
             link.W.data = HingeLossGen.normalize_embedding(link.W.data, axis=0)
