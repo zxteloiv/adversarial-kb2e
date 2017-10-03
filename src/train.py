@@ -15,9 +15,9 @@ def main():
     train_iter, valid_iter = map(lambda x: chainer.iterators.SerialIterator(x, batch_size=config.BATCH_SZ), dataset)
 
     # trainer = TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    # trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = GAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    # trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer.run()
 
 
@@ -31,13 +31,16 @@ def HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         hinge_gen.to_gpu(config.DEVICE)
 
-    opt = chainer.optimizers.SGD(config.SGD_LR)
+    # opt = chainer.optimizers.SGD(config.SGD_LR)
+    opt = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt.setup(hinge_gen)
+    # opt.add_hook(chainer.optimizer.Lasso(config.WEIGHT_DECAY), 'lasso')
     updater = chainer.training.StandardUpdater(train_iter, opt, device=config.DEVICE)
     trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
     trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss', 'elapsed_time']))
-    trainer.extend(extensions.snapshot_object(hinge_gen, 'gen_iter_{.updater.iteration}'), trigger=(1000, 'iteration'))
+    trainer.extend(extensions.snapshot_object(hinge_gen, 'gen_iter_{.updater.iteration}'),
+                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
     return trainer
 
 
@@ -50,7 +53,8 @@ def TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         transE.to_gpu(config.DEVICE)
 
-    opt = chainer.optimizers.SGD(config.SGD_LR)
+    # opt = chainer.optimizers.SGD(config.SGD_LR)
+    opt = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt.setup(transE)
     updater = chainer.training.StandardUpdater(train_iter, opt, device=config.DEVICE)
     trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
@@ -83,7 +87,7 @@ def GAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
 def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
 
     generator = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
-    discriminator = models.Discriminator(config.EMBED_SZ)
+    discriminator = models.NonparametricDiscriminator(config.EMBED_SZ)
     if len(sys.argv) > 1:
         chainer.serializers.load_npz(sys.argv[1], generator)
     if len(sys.argv) > 2:
@@ -101,11 +105,11 @@ def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
 
     # updater = updaters.WGANUpdator(train_iter, opt_g, opt_d, device=config.DEVICE, d_epoch=config.OPT_D_EPOCH,
     #                                g_epoch=config.OPT_G_EPOCH, penalty_coeff=config.PENALTY_COEFF)
-    updater = updaters.LSGANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH,
-                                    config.HINGE_LOSS_WEIGHT)
+    # updater = updaters.LSGANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH,
+    #                                 config.HINGE_LOSS_WEIGHT)
     # updater = updaters.LeastSquareGANUpdater(train_iter, opt_g, opt_d, config.DEVICE,
     #                                          config.OPT_D_EPOCH, config.OPT_G_EPOCH)
-    # updater = updaters.GANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH)
+    updater = updaters.GANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH)
 
     trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))

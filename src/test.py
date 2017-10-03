@@ -21,42 +21,47 @@ def main():
     logging.info('data loaded, size: train:valid:test=%d:%d:%d' % (len(train_data), len(valid_data), len(test_data)))
     logging.getLogger().setLevel(logging.INFO)
 
-    # transE = models.TransE.create_transe(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
-    # chainer.serializers.load_npz(args.models[0], transE)
-    # run_ranking_test(TransE_Scorer, transE, vocab_ent, test_data)
-
-    # gen = models.HingeLossGen.create_hinge_gen(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
-    # chainer.serializers.load_npz(args.models[0], gen)
-
-    gen = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
-    chainer.serializers.load_npz(args.models[0], gen)
-
-    d = None
-    if len(args.models) > 1:
-        d = models.Discriminator(config.EMBED_SZ)
-        chainer.serializers.load_npz(args.models[1], d)
-
     xp = np
     if config.DEVICE >= 0:
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         from chainer.cuda import cupy
         xp = cupy
-        gen.to_gpu(config.DEVICE)
-        if d is not None:
-            d.to_gpu(config.DEVICE)
 
-    # run_ranking_test(HingeGen_Scorer(gen, xp), vocab_ent, test_data)
-    run_ranking_test(GAN_Scorer(gen, d, xp), vocab_ent, test_data)
+    # # classical TransE
+    # transE = models.TransE.create_transe(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
+    # chainer.serializers.load_npz(args.models[0], transE)
+    # scorer = TransE_Scorer(transE, xp)
+
+    # MLP generator + Hinge Loss as the same as TransE
+    gen = models.HingeLossGen.create_hinge_gen(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
+    chainer.serializers.load_npz(args.models[0], gen)
+    scorer = HingeGen_Scorer(gen, xp)
+
+    # # GAN testing
+    # gen = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
+    # chainer.serializers.load_npz(args.models[0], gen)
+    # d = None
+    # if len(args.models) > 1:
+    #     d = models.Discriminator(config.EMBED_SZ)
+    #     chainer.serializers.load_npz(args.models[1], d)
+    #
+    # if config.DEVICE >= 0:
+    #     gen.to_gpu(config.DEVICE)
+    #     if d is not None:
+    #         d.to_gpu(config.DEVICE)
+    # scorer = GAN_Scorer(gen, d, xp)
+
+    run_ranking_test(scorer, vocab_ent, test_data)
 
 
 class TransE_Scorer(object):
     def __init__(self, model, xp):
-        self.transE = model
+        self.transE = model if config.DEVICE < 0 else model.to_gpu(config.DEVICE)
         self.xp = xp
 
     def set_candidate_t(self, candidate_t):
         self.bsz = candidate_t.shape[0]
-        self.ct_emb = self.model.ent_emb(candidate_t).reshape(self.bsz, -1).data
+        self.ct_emb = self.transE.ent_emb(candidate_t).reshape(self.bsz, -1).data
 
     def __call__(self, h, r):
         h_emb = self.transE.ent_emb(h).data # shape of (batchsz=1, embedding_size)
@@ -68,12 +73,12 @@ class TransE_Scorer(object):
 
 class HingeGen_Scorer(object):
     def __init__(self, model, xp):
-        self.model = model
+        self.model = model if config.DEVICE < 0 else model.to_gpu(config.DEVICE)
         self.xp = xp
 
     def set_candidate_t(self, candidate_t):
         self.bsz = candidate_t.shape[0]
-        self.ct_emb = self.model.ent_emb(candidate_t).reshape(self.bsz, -1).data
+        self.ct_emb = self.model.gen.ent_emb(candidate_t).reshape(self.bsz, -1).data
 
     def __call__(self, h, r):
         t_tilde = self.model.run_gen(h, r).data
@@ -84,8 +89,8 @@ class HingeGen_Scorer(object):
 
 class GAN_Scorer(object):
     def __init__(self, g, d, xp):
-        self.g = g
-        self.d = d
+        self.g = g if config.DEVICE < 0 else g.to_gpu(config.DEVICE)
+        self.d = d if config.DEVICE < 0 or d is None else g.to_gpu(config.DEVICE)
         self.xp = xp
 
     def set_candidate_t(self, candidate_t):

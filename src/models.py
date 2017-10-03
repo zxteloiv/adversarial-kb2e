@@ -43,7 +43,7 @@ class Generator(chainer.Chain):
         super(Generator, self).__init__(
             ent_emb=L.EmbedID(ent_num, in_dim),
             rel_emb=L.EmbedID(rel_num, in_dim),
-            mlp=VarMLP([in_dim * 2, in_dim, in_dim, in_dim, in_dim, in_dim])
+            mlp=VarMLP([in_dim * 2, in_dim, in_dim])
         )
 
         self.ent_num = ent_num
@@ -137,12 +137,18 @@ class BilinearDiscriminator(chainer.Chain):
         return self.bl(x, x)
 
 
+class NonparametricDiscriminator(chainer.Chain):
+    def __init__(self, in_dim):
+        super(NonparametricDiscriminator, self).__init__()
+
+    def __call__(self, h_emb, r_emb, t_emb):
+        return F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - t_emb)).reshape(-1, 1)
+
+
 class HingeLossGen(chainer.Chain):
     def __init__(self, emb_sz, ent_num, rel_num, margin, norm=1):
         super(HingeLossGen, self).__init__(
-            ent_emb=L.EmbedID(ent_num, emb_sz),
-            rel_emb=L.EmbedID(rel_num, emb_sz),
-            gen=VarMLP([emb_sz * 2, emb_sz, emb_sz])
+            gen=Generator(emb_sz, ent_num, rel_num)
         )
 
         self.emb_sz = emb_sz
@@ -150,7 +156,7 @@ class HingeLossGen(chainer.Chain):
         self.rel_num = rel_num
         self.margin = margin
         self.norm = norm
-        self.rel_emb.W.data = self.normalize_embedding(self.rel_emb.W.data)
+        self.gen.rel_emb.W.data = self.normalize_embedding(self.gen.rel_emb.W.data)
 
     @staticmethod
     def normalize_embedding(x, eps=1e-7, axis=1):
@@ -160,22 +166,19 @@ class HingeLossGen(chainer.Chain):
         return x / norm
 
     def __call__(self, h, r, t):
-        self.ent_emb.W.data = self.normalize_embedding(self.ent_emb.W.data)
+        self.gen.ent_emb.W.data = self.normalize_embedding(self.gen.ent_emb.W.data)
 
         xp = chainer.cuda.get_array_module(h)
         bsz = h.shape[0]
-        h = self.ent_emb(h).reshape(bsz, -1)
-        r = self.rel_emb(r).reshape(bsz, -1)
-        t = self.ent_emb(t).reshape(bsz, -1)
-
         half = bsz / 2
         h_corrupted = xp.random.randint(1, self.ent_num + 1, size=(half, 1))
         t_corrupted = xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1))
-        h_corrupted = self.ent_emb(h_corrupted).reshape(half, -1)
-        t_corrupted = self.ent_emb(t_corrupted).reshape(bsz - half, -1)
 
-        t_tilde = self.gen(F.concat([h, r]))
-        t_tilde_head_currupted = self.gen(F.concat([h_corrupted, r[:half]]))
+        t = self.gen.ent_emb(t).reshape(bsz, -1)
+        t_corrupted = self.gen.ent_emb(t_corrupted).reshape(bsz - half, -1)
+
+        t_tilde = self.gen(h, r)
+        t_tilde_head_currupted = self.gen(h_corrupted, r[:half])
 
         if self.norm == 1:
             # L1 norm
@@ -190,17 +193,19 @@ class HingeLossGen(chainer.Chain):
 
         dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0) # 1:1 size for corrupted heads and tails
 
-        loss = F.sum(F.relu(self.margin + dis_pos - dis_neg))
+        loss = F.average(F.relu(self.margin + dis_pos - dis_neg))
         chainer.report({'loss': loss})
         return loss
 
     def run_gen(self, h, r):
-        xp = chainer.cuda.get_array_module(h)
-        bsz = h.shape[0]
-        h = self.ent_emb(h).reshape(bsz, -1)
-        r = self.rel_emb(r).reshape(bsz, -1)
-        t_tilde = self.gen(F.concat([h, r]))
+        t_tilde = self.gen(h, r)
         return t_tilde
+
+    def serialize(self, serializer):
+        super(HingeLossGen, self).serialize(serializer)
+        self.emb_sz = serializer("self.emb_sz", self.emb_sz)
+        self.ent_num = serializer("self.ent_num", self.ent_num)
+        self.rel_num = serializer("self.rel_num", self.rel_num)
 
     @staticmethod
     def create_hinge_gen(emb_sz, vocab_ent, vocab_rel, gamma, norm=1):

@@ -7,22 +7,22 @@ DATASET_IN_USE = 'FB15k'
 DEVICE = 3
 ROOT_PATH = '..'
 
-USE_TINY_CORPUS_NUM = -1 #1000
+USE_TINY_CORPUS_NUM = -1  #1000
 
 # training framework conf
 BATCH_SZ = 1000
 EPOCH_NUM = 100000
-OPT_D_EPOCH = 10 # how many epochs are needed for training a discriminator in one iteration
-OPT_G_EPOCH = 1 # how many epochs are needed for training a generator in one iteration
-SGD_LR = 0.01 # learning rate for SGD only
+OPT_D_EPOCH = 1  # how many epochs are needed for training a discriminator in one iteration
+OPT_G_EPOCH = 1  # how many epochs are needed for training a generator in one iteration
+SGD_LR = 0.01  # learning rate for SGD only
 TRANSE_GAMMA = 1
-TRANSE_NORM = 2 # L1 norm =1, L2 norm =2
-WEIGHT_DECAY = 0.1
+TRANSE_NORM = 2  # L1 norm =1, L2 norm =2
+WEIGHT_DECAY = 0.001
 HINGE_LOSS_WEIGHT = 1
 ADAM_ALPHA = 1e-3
 ADAM_BETA1 = 0.5
 
-SAVE_ITER_INTERVAL = 100
+SAVE_ITER_INTERVAL = 200
 
 # model conf
 EMBED_SZ = 50
