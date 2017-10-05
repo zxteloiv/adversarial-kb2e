@@ -3,6 +3,7 @@
 import chainer
 import chainer.functions as F
 import numpy as np
+import models
 
 
 class AbstractGANUpdator(chainer.training.StandardUpdater):
@@ -169,6 +170,42 @@ class LSGANUpdater(AbstractGANUpdator):
         return ['epoch', 'iteration', 'loss_g', 'loss_gen', 'g_penalty',
                 'loss_d', 'loss_real', 'hinge_loss', 'd_penalty',
                 'elapsed_time']
+
+
+class FixedDGANUpdater(AbstractGANUpdator):
+    """simple GAN but with fixed D, usually the D is a predefined and perfect classifier"""
+    def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, g_epoch=5):
+        super(FixedDGANUpdater, self).__init__(data_iter, opt_g, opt_d, device, d_epoch, g_epoch)
+
+    def update_d(self, *args):
+        pass
+
+    def update_g(self, h, r, t):
+        # self.g.ent_emb.W.data = models.HingeLossGen.normalize_embedding(self.g.ent_emb.W.data)
+        # self.g.rel_emb.W.data = models.HingeLossGen.normalize_embedding(self.g.rel_emb.W.data)
+
+        h_emb = self.g.embed_entity(h)
+        r_emb = self.g.embed_relation(r)
+        t_emb = self.g.embed_entity(t)
+        t_tilde = self.g(h, r)
+        loss_g = F.sqrt(F.batch_l2_norm_squared(self.d(h_emb, r_emb, t_tilde)))
+        loss_g = F.average(loss_g)
+
+        # loss_sim = F.sqrt(F.batch_l2_norm_squared(self.d(h_emb, r_emb, t_tilde) - self.d(h_emb, r_emb, t_emb)) + 1e-7)
+        # loss_sim = F.average(loss_sim)
+
+        loss_sim = F.sqrt(F.batch_l2_norm_squared(t_tilde - t_emb) + 1e-7)
+        loss_sim = F.average(loss_sim)
+
+        loss = loss_g + loss_sim
+        self.g.cleargrads()
+        loss.backward()
+        self.get_optimizer('opt_g').update()
+        self.add_to_report(loss_g=loss_g, loss_sim=loss_sim)
+
+    @staticmethod
+    def get_report_list():
+        return ['epoch', 'iteration', 'loss_g', 'loss_sim', 'elapsed_time']
 
 
 class GANUpdater(AbstractGANUpdator):

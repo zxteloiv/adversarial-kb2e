@@ -15,9 +15,9 @@ def main():
     train_iter, valid_iter = map(lambda x: chainer.iterators.SerialIterator(x, batch_size=config.BATCH_SZ), dataset)
 
     # trainer = TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    # trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = GAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    # trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer.run()
 
 
@@ -34,7 +34,7 @@ def HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     # opt = chainer.optimizers.SGD(config.SGD_LR)
     opt = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt.setup(hinge_gen)
-    # opt.add_hook(chainer.optimizer.Lasso(config.WEIGHT_DECAY), 'lasso')
+    opt.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY), 'weight_decay')
     updater = chainer.training.StandardUpdater(train_iter, opt, device=config.DEVICE)
     trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
@@ -109,7 +109,8 @@ def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     #                                 config.HINGE_LOSS_WEIGHT)
     # updater = updaters.LeastSquareGANUpdater(train_iter, opt_g, opt_d, config.DEVICE,
     #                                          config.OPT_D_EPOCH, config.OPT_G_EPOCH)
-    updater = updaters.GANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH)
+    # updater = updaters.GANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH)
+    updater = updaters.FixedDGANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH, config.OPT_G_EPOCH)
 
     trainer = chainer.training.Trainer(updater, (config.EPOCH_NUM, 'epoch'), out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))

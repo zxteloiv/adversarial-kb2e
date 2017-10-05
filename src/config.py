@@ -17,7 +17,7 @@ OPT_G_EPOCH = 1  # how many epochs are needed for training a generator in one it
 SGD_LR = 0.01  # learning rate for SGD only
 TRANSE_GAMMA = 1
 TRANSE_NORM = 2  # L1 norm =1, L2 norm =2
-WEIGHT_DECAY = 0.001
+WEIGHT_DECAY = 1e-5
 HINGE_LOSS_WEIGHT = 1
 ADAM_ALPHA = 1e-3
 ADAM_BETA1 = 0.5

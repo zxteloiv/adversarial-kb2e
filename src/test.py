@@ -32,24 +32,24 @@ def main():
     # chainer.serializers.load_npz(args.models[0], transE)
     # scorer = TransE_Scorer(transE, xp)
 
-    # MLP generator + Hinge Loss as the same as TransE
-    gen = models.HingeLossGen.create_hinge_gen(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
-    chainer.serializers.load_npz(args.models[0], gen)
-    scorer = HingeGen_Scorer(gen, xp)
-
-    # # GAN testing
-    # gen = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
+    # # MLP generator + Hinge Loss as the same as TransE
+    # gen = models.HingeLossGen.create_hinge_gen(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
     # chainer.serializers.load_npz(args.models[0], gen)
-    # d = None
-    # if len(args.models) > 1:
-    #     d = models.Discriminator(config.EMBED_SZ)
-    #     chainer.serializers.load_npz(args.models[1], d)
-    #
-    # if config.DEVICE >= 0:
-    #     gen.to_gpu(config.DEVICE)
-    #     if d is not None:
-    #         d.to_gpu(config.DEVICE)
-    # scorer = GAN_Scorer(gen, d, xp)
+    # scorer = HingeGen_Scorer(gen, xp)
+
+    # GAN testing
+    gen = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
+    chainer.serializers.load_npz(args.models[0], gen)
+    d = None
+    if len(args.models) > 1:
+        d = models.Discriminator(config.EMBED_SZ)
+        chainer.serializers.load_npz(args.models[1], d)
+
+    if config.DEVICE >= 0:
+        gen.to_gpu(config.DEVICE)
+        if d is not None:
+            d.to_gpu(config.DEVICE)
+    scorer = GAN_Scorer(gen, d, xp)
 
     run_ranking_test(scorer, vocab_ent, test_data)
 
