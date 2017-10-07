@@ -290,6 +290,8 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         self.margin = margin
 
     def update_d(self, h, r, t):
+        self.d.ent.W.data = models.HingeLossGen.normalize_embedding(self.d.ent.W.data)
+
         h_emb, t_emb = map(lambda x: self.d.ent(x).reshape(h.shape[0], -1), (h, t))
         r_emb = self.d.rel(r).reshape(h.shape[0], -1)
 
