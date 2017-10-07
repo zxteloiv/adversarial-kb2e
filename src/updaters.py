@@ -284,6 +284,47 @@ class LeastSquareGANUpdater(AbstractGANUpdator):
         return ['epoch', 'iteration', 'loss_g','loss_d', 'loss_real', 'loss_gen', 'elapsed_time']
 
 
+class ExperimentalGANUpdater(AbstractGANUpdator):
+    def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, g_epoch, margin):
+        super(ExperimentalGANUpdater, self).__init__(data_iter, opt_g, opt_d, device, d_epoch, g_epoch)
+        self.margin = margin
+
+    def update_d(self, h, r, t):
+        h_emb, t_emb = map(lambda x: self.d.ent(x).reshape(h.shape[0], -1), (h, t))
+        r_emb = self.d.rel(r).reshape(h.shape[0], -1)
+
+        def distance(h_emb, r_emb, t_emb):
+            return F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - t_emb) + 1e-7).reshape(-1, 1)
+
+        loss_real = distance(h_emb, r_emb, t_emb)
+        t_tilde_emb = self.g(F.concat((h_emb, r_emb)))
+        loss_gen = distance(h_emb, r_emb, t_tilde_emb)
+        loss = F.relu(self.margin + loss_real - loss_gen)
+        loss = F.average(loss)
+
+        self.d.cleargrads()
+        loss.backward()
+        self.get_optimizer('opt_d').update()
+        self.add_to_report(loss_d=loss)
+
+    def update_g(self, h, r, t):
+        h_emb, t_emb = map(lambda x: self.d.ent(x).reshape(h.shape[0], -1), (h, t))
+        r_emb = self.d.rel(r).reshape(h.shape[0], -1)
+        t_tilde_emb = self.g(F.concat((h_emb, r_emb)))
+
+        loss_g = F.sqrt(F.batch_l2_norm_squared(t_tilde_emb - t_emb) + 1e-7).reshape(-1, 1)
+        loss_g = F.average(loss_g)
+
+        self.g.cleargrads()
+        loss_g.backward()
+        self.get_optimizer('opt_g').update()
+        self.add_to_report(loss_g=loss_g)
+
+    @staticmethod
+    def get_report_list():
+        return ['epoch', 'iteration', 'loss_g', 'loss_d', 'elapsed_time']
+
+
 
 
 

@@ -38,6 +38,14 @@ class VarMLP(chainer.ChainList):
         return hidden
 
 
+class Embeddings(chainer.Chain):
+    def __init__(self, emb_sz, ent_num, rel_num):
+        super(Embeddings, self).__init__(
+            ent=L.EmbedID(ent_num, emb_sz),
+            rel=L.EmbedID(rel_num, emb_sz)
+        )
+
+
 class Generator(chainer.Chain):
     def __init__(self, in_dim, ent_num, rel_num):
         super(Generator, self).__init__(

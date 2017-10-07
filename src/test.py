@@ -37,19 +37,27 @@ def main():
     # chainer.serializers.load_npz(args.models[0], gen)
     # scorer = HingeGen_Scorer(gen, xp)
 
-    # GAN testing
-    gen = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
-    chainer.serializers.load_npz(args.models[0], gen)
-    d = None
-    if len(args.models) > 1:
-        d = models.Discriminator(config.EMBED_SZ)
-        chainer.serializers.load_npz(args.models[1], d)
+    # # GAN testing
+    # gen = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
+    # chainer.serializers.load_npz(args.models[0], gen)
+    # d = None
+    # if len(args.models) > 1:
+    #     d = models.Discriminator(config.EMBED_SZ)
+    #     chainer.serializers.load_npz(args.models[1], d)
+    #
+    # if config.DEVICE >= 0:
+    #     gen.to_gpu(config.DEVICE)
+    #     if d is not None:
+    #         d.to_gpu(config.DEVICE)
+    # scorer = GAN_Scorer(gen, d, xp)
 
-    if config.DEVICE >= 0:
-        gen.to_gpu(config.DEVICE)
-        if d is not None:
-            d.to_gpu(config.DEVICE)
-    scorer = GAN_Scorer(gen, d, xp)
+    # Experimental tesing
+    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ])
+    embeddings = models.Embeddings(config.EMBED_SZ, len(vocab_ent) + 1, len(vocab_rel) + 1)
+    print args.models[0], args.models[1]
+    chainer.serializers.load_npz(args.models[0], generator)
+    chainer.serializers.load_npz(args.models[1], embeddings)
+    scorer = Experimental_Scorer(generator, embeddings, xp)
 
     run_ranking_test(scorer, vocab_ent, test_data)
 
@@ -90,7 +98,7 @@ class HingeGen_Scorer(object):
 class GAN_Scorer(object):
     def __init__(self, g, d, xp):
         self.g = g if config.DEVICE < 0 else g.to_gpu(config.DEVICE)
-        self.d = d if config.DEVICE < 0 or d is None else g.to_gpu(config.DEVICE)
+        self.d = d if config.DEVICE < 0 or d is None else d.to_gpu(config.DEVICE)
         self.xp = xp
 
     def set_candidate_t(self, candidate_t):
@@ -110,6 +118,27 @@ class GAN_Scorer(object):
 
     def get_g_score(self, h, r):
         t_tilde = self.g(h, r)
+        values = self.xp.linalg.norm(t_tilde.data - self.ct_emb.data, axis=1)
+        scores = chainer.cuda.to_cpu(values)
+        return scores
+
+
+class Experimental_Scorer(object):
+    def __init__(self, g, d, xp):
+        self.g = g if config.DEVICE < 0 else g.to_gpu(config.DEVICE)
+        self.d = d if config.DEVICE < 0 or d is None else d.to_gpu(config.DEVICE)
+        self.xp = xp
+
+    def set_candidate_t(self, candidate_t):
+        self.bsz = candidate_t.shape[0]
+        self.ct_emb = self.d.ent(candidate_t)
+
+    def __call__(self, h, r):
+        return self.get_g_score(h, r)
+
+    def get_g_score(self, h, r):
+        x = F.concat([self.d.ent(h), self.d.rel(r)])
+        t_tilde = self.g(x)
         values = self.xp.linalg.norm(t_tilde.data - self.ct_emb.data, axis=1)
         scores = chainer.cuda.to_cpu(values)
         return scores
