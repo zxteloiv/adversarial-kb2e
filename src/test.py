@@ -134,14 +134,25 @@ class Experimental_Scorer(object):
         self.ct_emb = self.d.ent(candidate_t)
 
     def __call__(self, h, r):
-        return self.get_g_score(h, r)
+        g_value = self.get_g_score(h, r)
+        d_value = self.get_d_score(h, r)
+        v = g_value + d_value
+        # v = g_value
+        s = chainer.cuda.to_cpu(v)
+        return s
 
     def get_g_score(self, h, r):
         x = F.concat([self.d.ent(h), self.d.rel(r)])
         t_tilde = self.g(x)
         values = self.xp.linalg.norm(t_tilde.data - self.ct_emb.data, axis=1)
-        scores = chainer.cuda.to_cpu(values)
-        return scores
+        return values
+
+    def get_d_score(self, h, r):
+        h_emb, r_emb = self.d.ent(h).reshape(h.shape[0], -1), self.d.rel(r).reshape(h.shape[0], -1)
+        t_tilde = h_emb + r_emb
+        values = self.xp.linalg.norm(t_tilde.data - self.ct_emb.data, axis=1)
+        return values
+
 
 
 def run_ranking_test(scorer, vocab_ent, test_data):
