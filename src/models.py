@@ -34,7 +34,7 @@ class VarMLP(chainer.ChainList):
     def __call__(self, x):
         hidden = x
         for i, link in enumerate(self.children()):
-            hidden = selu(link(hidden)) if i < len(self) - 1 else link(hidden)
+            hidden = F.tanh(link(hidden)) if i < len(self) - 1 else link(hidden)
         return hidden
 
 

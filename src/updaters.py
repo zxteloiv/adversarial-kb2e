@@ -299,6 +299,7 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         t_tilde_emb = self.g(F.concat((h_emb, r_emb)))
         loss_real = distance(h_emb + r_emb, t_emb)
         loss_gen = distance(h_emb + r_emb, t_tilde_emb)
+
         loss = F.relu(self.margin + loss_real - loss_gen)
         loss = F.average(loss)
 

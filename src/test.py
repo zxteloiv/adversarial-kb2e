@@ -137,7 +137,6 @@ class Experimental_Scorer(object):
         g_value = self.get_g_score(h, r)
         d_value = self.get_d_score(h, r)
         v = g_value + d_value
-        # v = g_value
         s = chainer.cuda.to_cpu(v)
         return s
 
@@ -152,7 +151,6 @@ class Experimental_Scorer(object):
         t_tilde = h_emb + r_emb
         values = self.xp.linalg.norm(t_tilde.data - self.ct_emb.data, axis=1)
         return values
-
 
 
 def run_ranking_test(scorer, vocab_ent, test_data):
