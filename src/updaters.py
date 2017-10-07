@@ -290,17 +290,15 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         self.margin = margin
 
     def update_d(self, h, r, t):
-        self.d.ent.W.data = models.HingeLossGen.normalize_embedding(self.d.ent.W.data)
-
         h_emb, t_emb = map(lambda x: self.d.ent(x).reshape(h.shape[0], -1), (h, t))
         r_emb = self.d.rel(r).reshape(h.shape[0], -1)
 
-        def distance(h_emb, r_emb, t_emb):
-            return F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - t_emb) + 1e-7).reshape(-1, 1)
+        def distance(x, y):
+            return F.sqrt(F.batch_l2_norm_squared(x - y) + 1e-7).reshape(-1, 1)
 
-        loss_real = distance(h_emb, r_emb, t_emb)
+        loss_real = distance(h_emb + r_emb, t_emb)
         t_tilde_emb = self.g(F.concat((h_emb, r_emb)))
-        loss_gen = distance(h_emb, r_emb, t_tilde_emb)
+        loss_gen = distance(t_emb, t_tilde_emb)
         loss = F.relu(self.margin + loss_real - loss_gen)
         loss = F.average(loss)
 
