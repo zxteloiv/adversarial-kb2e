@@ -143,8 +143,8 @@ def ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     opt_g.setup(generator)
     opt_d.setup(discriminator)
 
-    updater = updaters.ExperimentalGANUpdater(train_iter, opt_g, opt_d, config.DEVICE,
-                                              config.OPT_D_EPOCH, config.OPT_G_EPOCH, config.TRANSE_GAMMA)
+    updater = updaters.ExperimentalGANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH,
+                                              config.OPT_G_EPOCH, config.TRANSE_GAMMA, len(vocab_ent) + 1)
 
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))

@@ -285,10 +285,10 @@ class LeastSquareGANUpdater(AbstractGANUpdator):
 
 
 class ExperimentalGANUpdater(AbstractGANUpdator):
-    def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, g_epoch, margin, ent_num):
+    def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, g_epoch, margin=1, ent_num=None):
         super(ExperimentalGANUpdater, self).__init__(data_iter, opt_g, opt_d, device, d_epoch, g_epoch)
         self.margin = margin
-        self.ent_num = ent_num
+        self.ent_num = self.d.ent.W.shape[0] if ent_num is None else ent_num
 
     def update_d(self, h, r, t):
         bsz = h.shape[0]
