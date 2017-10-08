@@ -345,7 +345,7 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
 
     @staticmethod
     def get_report_list():
-        return ['epoch', 'iteration', 'loss_g', 'loss_d', 'loss_d_gen', 'loss_d_neg' 'elapsed_time']
+        return ['epoch', 'iteration', 'loss_g', 'loss_d', 'loss_d_gen', 'loss_d_neg', 'elapsed_time']
 
 
 
