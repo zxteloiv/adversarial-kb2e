@@ -302,6 +302,7 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         loss_real = distance(h_emb + r_emb, t_emb)
         loss_gen = distance(h_emb + r_emb, t_tilde_emb)
 
+        # margin between real and generated is the same as the margin parameter
         loss_real_and_gen = F.average(F.relu(self.margin + loss_real - loss_gen))
 
         half = bsz / 2
@@ -319,6 +320,7 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         dis_neg_t = distance(t_tilde_emb[half:], t_corrupted_emb)
         dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0)  # 1:1 size for corrupted heads and tails
 
+        # margin between real and negative samples is 2 times of the margin parameter
         loss_real_and_neg = F.average(F.relu(self.margin * 2 + dis_pos - dis_neg))
 
         loss = loss_real_and_gen + loss_real_and_neg
