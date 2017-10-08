@@ -299,36 +299,23 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
             return F.sqrt(F.batch_l2_norm_squared(x - y) + 1e-7).reshape(-1, 1)
 
         t_tilde_emb = self.g(F.concat((h_emb, r_emb)))
-        loss_real = distance(h_emb + r_emb, t_emb)
-        loss_gen = distance(h_emb + r_emb, t_tilde_emb)
-
-        # margin between real and generated is the same as the margin parameter
-        loss_real_and_gen = F.average(F.relu(self.margin + loss_real - loss_gen))
+        loss_pos = distance(h_emb + r_emb, t_tilde_emb)
 
         half = bsz / 2
         h_corrupted = self.xp.random.randint(1, self.ent_num + 1, size=(half, 1))
         t_corrupted = self.xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1))
-
         h_corrupted_emb = self.d.ent(h_corrupted).reshape(half, -1)
         t_corrupted_emb = self.d.ent(t_corrupted).reshape(bsz - half, -1)
+        loss_neg_h = distance(h_corrupted_emb + r_emb[:half], t_emb[:half])
+        loss_neg_t = distance((h_emb + r_emb)[half:], t_corrupted_emb)
+        loss_neg = F.concat([loss_neg_h, loss_neg_t], axis=0)  # 1:1 size for corrupted heads and tails
 
-        t_tilde_head_corrupted = self.g(F.concat([h_corrupted_emb, r_emb[:half]]))
-
-        # L2 norm
-        dis_pos = distance(t_tilde_emb, t_emb)
-        dis_neg_h = distance(t_tilde_head_corrupted, t_emb[:half])
-        dis_neg_t = distance(t_tilde_emb[half:], t_corrupted_emb)
-        dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0)  # 1:1 size for corrupted heads and tails
-
-        # margin between real and negative samples is 2 times of the margin parameter
-        loss_real_and_neg = F.average(F.relu(self.margin * 2 + dis_pos - dis_neg))
-
-        loss = loss_real_and_gen + loss_real_and_neg
+        loss = F.average(F.relu(self.margin + loss_pos - loss_neg))
 
         self.d.cleargrads()
         loss.backward()
         self.get_optimizer('opt_d').update()
-        self.add_to_report(loss_d=loss, loss_d_gen=loss_real_and_gen, loss_d_neg=loss_real_and_neg)
+        self.add_to_report(loss_d=loss)
 
     def update_g(self, h, r, t):
         h_emb, t_emb = map(lambda x: self.d.ent(x).reshape(h.shape[0], -1), (h, t))
@@ -345,7 +332,7 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
 
     @staticmethod
     def get_report_list():
-        return ['epoch', 'iteration', 'loss_g', 'loss_d', 'loss_d_gen', 'loss_d_neg', 'elapsed_time']
+        return ['epoch', 'iteration', 'loss_g', 'loss_d', 'elapsed_time']
 
 
 
