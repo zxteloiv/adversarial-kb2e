@@ -23,7 +23,7 @@ TRAINING_LIMIT = (5000, 'iteration')  # or (10000, 'epoch')
 # model conf
 EMBED_SZ = 50
 PENALTY_COEFF = 1
-TRANSE_GAMMA = 1
+TRANSE_GAMMA = 0.6
 TRANSE_NORM = 2  # L1 norm =1, L2 norm =2
 WEIGHT_DECAY = 1e-5
 HINGE_LOSS_WEIGHT = 1
