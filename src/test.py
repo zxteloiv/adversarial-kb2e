@@ -51,13 +51,22 @@ def main():
     #         d.to_gpu(config.DEVICE)
     # scorer = GAN_Scorer(gen, d, xp)
 
-    # Experimental tesing
-    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ])
+    # # Experimental tesing
+    # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ])
+    # embeddings = models.Embeddings(config.EMBED_SZ, len(vocab_ent) + 1, len(vocab_rel) + 1)
+    # print args.models[0], args.models[1]
+    # chainer.serializers.load_npz(args.models[0], generator)
+    # chainer.serializers.load_npz(args.models[1], embeddings)
+    # scorer = Experimental_Scorer(generator, embeddings, xp)
+
+    # Adversarial Embeddings Scorer
     embeddings = models.Embeddings(config.EMBED_SZ, len(vocab_ent) + 1, len(vocab_rel) + 1)
-    print args.models[0], args.models[1]
-    chainer.serializers.load_npz(args.models[0], generator)
-    chainer.serializers.load_npz(args.models[1], embeddings)
-    scorer = Experimental_Scorer(generator, embeddings, xp)
+    gen_ent = models.VarMLP([config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ])
+    gen_rel = models.VarMLP([config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ])
+    critic = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
+    for i, m in enumerate([embeddings, gen_ent, gen_rel, critic]):
+        chainer.serializers.load_npz(args.models[i], m)
+    scorer = AdvEmbScorer(embeddings, gen_ent, gen_rel, critic, xp)
 
     run_ranking_test(scorer, vocab_ent, test_data)
 
@@ -151,6 +160,29 @@ class Experimental_Scorer(object):
         t_tilde = h_emb + r_emb
         values = self.xp.linalg.norm(t_tilde.data - self.ct_emb.data, axis=1)
         return values
+
+
+class AdvEmbScorer(object):
+    def __init__(self, emb, g_ent, g_rel, critic, xp):
+        self.emb = emb if config.DEVICE < 0 else emb.to_gpu(config.DEVICE)
+        self.g_ent = g_ent if config.DEVICE < 0 else g_ent.to_gpu(config.DEVICE)
+        self.g_rel = g_rel if config.DEVICE < 0 else g_rel.to_gpu(config.DEVICE)
+        self.critic = critic if config.DEVICE < 0 else critic.to_gpu(config.DEVICE)
+        self.xp = xp
+
+    def set_candidate_t(self, candidate_t):
+        self.bsz = candidate_t.shape[0]
+        self.ct_emb = self.emb.ent(candidate_t)
+
+    def __call__(self, h, r):
+        h_emb = F.broadcast_to(self.emb.ent(h).reshape(h.shape[0], -1), self.ct_emb.shape)
+        r_emb = F.broadcast_to(self.emb.rel(r).reshape(h.shape[0], -1), self.ct_emb.shape)
+        values = -self.critic(F.concat([self.g_ent(h_emb), self.g_rel(r_emb), self.g_ent(self.ct_emb)]))
+        # values = F.batch_l2_norm_squared(self.g_ent(h_emb) + self.g_rel(r_emb) - self.g_ent(self.ct_emb))
+        values += F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - self.ct_emb)).reshape(self.bsz, -1)
+        values = values.reshape(self.bsz)
+        scores = chainer.cuda.to_cpu(values.data)
+        return scores
 
 
 def run_ranking_test(scorer, vocab_ent, test_data):
