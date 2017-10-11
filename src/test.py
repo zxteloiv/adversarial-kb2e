@@ -179,7 +179,7 @@ class AdvEmbScorer(object):
         r_emb = F.broadcast_to(self.emb.rel(r).reshape(h.shape[0], -1), self.ct_emb.shape)
         values = -self.critic(F.concat([self.g_ent(h_emb), self.g_rel(r_emb), self.g_ent(self.ct_emb)]))
         # values = F.batch_l2_norm_squared(self.g_ent(h_emb) + self.g_rel(r_emb) - self.g_ent(self.ct_emb))
-        values += F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - self.ct_emb)).reshape(self.bsz, -1)
+        # values += F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - self.ct_emb)).reshape(self.bsz, -1)
         values = values.reshape(self.bsz)
         scores = chainer.cuda.to_cpu(values.data)
         return scores

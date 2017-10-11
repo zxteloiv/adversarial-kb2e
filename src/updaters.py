@@ -409,7 +409,14 @@ class AdvEmbUpdater(chainer.training.StandardUpdater):
         h_emb, t_emb = map(lambda x: self.emb.ent(x).reshape(bsz, -1), [h, t])
         r_emb = self.emb.rel(r).reshape(bsz, -1)
 
-        loss_g = self.critic(F.concat([self.g_ent(h_emb), self.g_rel(r_emb), self.g_ent(t_emb)]))
+        half = bsz / 2
+        h_neg = self.xp.random.randint(1, self.ent_num + 1, size=(half, 1))
+        t_neg = self.xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1))
+        h_neg_emb, t_neg_emb = map(lambda x, y: self.emb.ent(x).reshape(y, -1), [h_neg, t_neg], [half, bsz - half])
+        h_neg_emb = F.concat([h_neg_emb, h_emb[half:]], axis=0)
+        t_neg_emb = F.concat([t_emb[:half], t_neg_emb], axis=0)
+
+        loss_g = self.critic(F.concat([self.g_ent(h_neg_emb), self.g_rel(r_emb), self.g_ent(t_neg_emb)]))
         loss_g = F.average(F.batch_l2_norm_squared(loss_g - 1))
 
         self.g_ent.cleargrads()
