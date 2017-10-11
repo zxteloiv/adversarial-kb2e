@@ -396,12 +396,14 @@ class AdvEmbUpdater(chainer.training.StandardUpdater):
         loss_neg = self.critic(F.concat([self.g_ent(h_neg_emb), self.g_rel(r_emb), self.g_ent(t_neg_emb)]))
         loss_neg = self.distance(loss_neg, -1)
 
-        loss_c = F.average(loss_pos + loss_neg)
+        loss_pos = F.average(loss_pos)
+        loss_neg = F.average(loss_neg)
+        loss_c = loss_neg + loss_pos
 
         self.critic.cleargrads()
         loss_c.backward()
         self.get_optimizer('opt_c').update()
-        self.add_to_report(loss_c=loss_c)
+        self.add_to_report(loss_c=loss_c, loss_c_pos=loss_pos, loss_c_neg=loss_neg)
 
     def update_g(self, *args):
         h, r, t = args
