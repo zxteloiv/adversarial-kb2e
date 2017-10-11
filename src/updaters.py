@@ -434,7 +434,7 @@ class AdvEmbUpdater(chainer.training.StandardUpdater):
 
     @staticmethod
     def get_report_list():
-        return ['epoch', 'iteration', 'loss_g', 'loss_c', 'elapsed_time']
+        return ['epoch', 'iteration', 'loss_g', 'loss_c_pos', 'loss_c_neg', 'elapsed_time']
 
     def add_to_report(self, **kwargs):
         self.reports.update(kwargs)
