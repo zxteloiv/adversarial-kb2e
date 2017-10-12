@@ -383,24 +383,11 @@ class AdvEmbUpdater(chainer.training.StandardUpdater):
         h_emb, t_emb = map(lambda x: self.emb.ent(x).reshape(bsz, -1), [h, t])
         r_emb = self.emb.rel(r).reshape(bsz, -1)
 
-        half = bsz / 2
-        h_neg = self.xp.random.randint(1, self.ent_num + 1, size=(half, 1))
-        t_neg = self.xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1))
-        h_neg_emb, t_neg_emb = map(lambda x, y: self.emb.ent(x).reshape(y, -1), [h_neg, t_neg], [half, bsz - half])
-        h_neg_emb = F.concat([h_neg_emb, h_emb[half:]], axis=0)
-        t_neg_emb = F.concat([t_emb[:half], t_neg_emb], axis=0)
+        t_rand_emb = self.xp.random.randn(*(t_emb.shape)).astype(self.xp.float32)
 
         loss_pos = F.tanh(self.critic(F.concat([self.g_ent(h_emb), self.g_rel(r_emb), self.g_ent(t_emb)])))
-        # loss_pos = self.distance(loss_pos, 1)
-
-        loss_neg = F.tanh(self.critic(F.concat([self.g_ent(h_neg_emb), self.g_rel(r_emb), self.g_ent(t_neg_emb)])))
-        # loss_neg = self.distance(loss_neg, -1)
-
-        loss_c = F.average(F.relu(1.0 + loss_pos - loss_neg))
-
-        # loss_pos = F.average(loss_pos)
-        # loss_neg = F.average(loss_neg)
-        # loss_c = loss_neg + loss_pos
+        loss_neg = F.tanh(self.critic(F.concat([self.g_ent(h_emb), self.g_rel(r_emb), self.g_ent(t_rand_emb)])))
+        loss_c = F.average(F.relu(0.5 + loss_pos - loss_neg))
 
         self.critic.cleargrads()
         loss_c.backward()
@@ -413,14 +400,9 @@ class AdvEmbUpdater(chainer.training.StandardUpdater):
         h_emb, t_emb = map(lambda x: self.emb.ent(x).reshape(bsz, -1), [h, t])
         r_emb = self.emb.rel(r).reshape(bsz, -1)
 
-        half = bsz / 2
-        h_neg = self.xp.random.randint(1, self.ent_num + 1, size=(half, 1))
-        t_neg = self.xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1))
-        h_neg_emb, t_neg_emb = map(lambda x, y: self.emb.ent(x).reshape(y, -1), [h_neg, t_neg], [half, bsz - half])
-        h_neg_emb = F.concat([h_neg_emb, h_emb[half:]], axis=0)
-        t_neg_emb = F.concat([t_emb[:half], t_neg_emb], axis=0)
+        t_rand_emb = self.xp.random.randn(*(t_emb.shape)).astype(self.xp.float32)
 
-        loss_g = F.tanh(self.critic(F.concat([self.g_ent(h_neg_emb), self.g_rel(r_emb), self.g_ent(t_neg_emb)])))
+        loss_g = F.tanh(self.critic(F.concat([self.g_ent(h_emb), self.g_rel(r_emb), self.g_ent(t_rand_emb)])))
         # loss_g = F.average(F.batch_l2_norm_squared(loss_g))
         loss_g = F.average(loss_g)
 
