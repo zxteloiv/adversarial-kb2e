@@ -18,8 +18,8 @@ def main():
     # trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = GAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    # trainer = ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    trainer = AdversarialEmbedding_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    trainer = ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    # trainer = AdversarialEmbedding_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer.run()
 
 
@@ -126,33 +126,41 @@ def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
 
 
 def ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
-    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ])
-    embeddings = models.Embeddings(config.EMBED_SZ, len(vocab_ent) + 1, len(vocab_rel) + 1)
-    discriminator = embeddings
+    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
+    embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
     if len(sys.argv) > 1:
         chainer.serializers.load_npz(sys.argv[1], generator)
     if len(sys.argv) > 2:
         chainer.serializers.load_npz(sys.argv[2], discriminator)
+    if len(sys.argv) > 3:
+        chainer.serializers.load_npz(sys.argv[3], embeddings)
 
     if config.DEVICE >= 0:
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         generator.to_gpu(config.DEVICE)
         discriminator.to_gpu(config.DEVICE)
+        embeddings.to_gpu(config.DEVICE)
 
     opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt_d = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
+    opt_e = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt_g.setup(generator)
     opt_d.setup(discriminator)
+    opt_e.setup(embeddings)
 
-    updater = updaters.ExperimentalGANUpdater(train_iter, opt_g, opt_d, config.DEVICE, config.OPT_D_EPOCH,
-                                              config.OPT_G_EPOCH, config.TRANSE_GAMMA, len(vocab_ent) + 1)
+    updater = updaters.ExperimentalGANUpdater(train_iter, opt_g, opt_d, opt_e, config.DEVICE,
+                                              config.OPT_D_EPOCH, config.OPT_G_EPOCH, ent_num)
 
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
     trainer.extend(extensions.PrintReport(updater.get_report_list()))
-    trainer.extend(extensions.snapshot_object(generator, 'gen_iter_{.updater.iteration}'),
+    trainer.extend(extensions.snapshot_object(generator, 'g_iter_{.updater.iteration}'),
                    trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
     trainer.extend(extensions.snapshot_object(discriminator, 'd_iter_{.updater.iteration}'),
+                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
+    trainer.extend(extensions.snapshot_object(embeddings, 'e_iter_{.updater.iteration}'),
                    trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
 
     return trainer
@@ -194,7 +202,6 @@ def AdversarialEmbedding_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
                    trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
 
     return trainer
-
 
 
 def get_trainer_out_path():

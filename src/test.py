@@ -51,22 +51,23 @@ def main():
     #         d.to_gpu(config.DEVICE)
     # scorer = GAN_Scorer(gen, d, xp)
 
-    # # Experimental tesing
-    # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ])
-    # embeddings = models.Embeddings(config.EMBED_SZ, len(vocab_ent) + 1, len(vocab_rel) + 1)
-    # print args.models[0], args.models[1]
-    # chainer.serializers.load_npz(args.models[0], generator)
-    # chainer.serializers.load_npz(args.models[1], embeddings)
-    # scorer = Experimental_Scorer(generator, embeddings, xp)
+    # Experimental tesing
+    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
+    embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
+    chainer.serializers.load_npz(args.models[0], generator)
+    chainer.serializers.load_npz(args.models[1], discriminator)
+    chainer.serializers.load_npz(args.models[2], embeddings)
 
-    # Adversarial Embeddings Scorer
-    embeddings = models.Embeddings(config.EMBED_SZ, len(vocab_ent) + 1, len(vocab_rel) + 1)
-    gen_ent = models.VarMLP([config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ])
-    gen_rel = models.VarMLP([config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ])
-    critic = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
-    for i, m in enumerate([embeddings, gen_ent, gen_rel, critic]):
-        chainer.serializers.load_npz(args.models[i], m)
-    scorer = AdvEmbScorer(embeddings, gen_ent, gen_rel, critic, xp)
+    if config.DEVICE >= 0:
+        chainer.cuda.get_device_from_id(config.DEVICE).use()
+        generator.to_gpu(config.DEVICE)
+        discriminator.to_gpu(config.DEVICE)
+        embeddings.to_gpu(config.DEVICE)
+
+    print args.models[0], args.models[1], args.models[2]
+    scorer = Experimental_Scorer(generator, discriminator, embeddings, xp)
 
     run_ranking_test(scorer, vocab_ent, test_data)
 
@@ -133,56 +134,34 @@ class GAN_Scorer(object):
 
 
 class Experimental_Scorer(object):
-    def __init__(self, g, d, xp):
+    def __init__(self, g, d, e, xp):
         self.g = g if config.DEVICE < 0 else g.to_gpu(config.DEVICE)
         self.d = d if config.DEVICE < 0 or d is None else d.to_gpu(config.DEVICE)
+        self.e = e if config.DEVICE < 0 or e is None else e.to_gpu(config.DEVICE)
         self.xp = xp
 
     def set_candidate_t(self, candidate_t):
         self.bsz = candidate_t.shape[0]
-        self.ct_emb = self.d.ent(candidate_t)
+        self.ct_emb = self.e.ent(candidate_t)
 
     def __call__(self, h, r):
-        g_value = self.get_g_score(h, r)
-        d_value = self.get_d_score(h, r)
-        v = g_value + d_value
-        s = chainer.cuda.to_cpu(v)
+        h_raw = self.e.ent(h).reshape(h.shape[0], -1)
+        r_raw = self.e.rel(r).reshape(r.shape[0], -1)
+        values = self.get_d_score(h_raw, r_raw)
+        s = chainer.cuda.to_cpu(values)
         return s
 
-    def get_g_score(self, h, r):
-        x = F.concat([self.d.ent(h), self.d.rel(r)])
-        t_tilde = self.g(x)
-        values = self.xp.linalg.norm(t_tilde.data - self.ct_emb.data, axis=1)
-        return values
+    def get_g_score(self, h_emb, r_emb):
+        logits = self.g(F.concat([h_emb, r_emb]))
+        prob = F.softmax(logits)
+        return prob.data[0]
 
-    def get_d_score(self, h, r):
-        h_emb, r_emb = self.d.ent(h).reshape(h.shape[0], -1), self.d.rel(r).reshape(h.shape[0], -1)
-        t_tilde = h_emb + r_emb
-        values = self.xp.linalg.norm(t_tilde.data - self.ct_emb.data, axis=1)
-        return values
-
-
-class AdvEmbScorer(object):
-    def __init__(self, emb, g_ent, g_rel, critic, xp):
-        self.emb = emb if config.DEVICE < 0 else emb.to_gpu(config.DEVICE)
-        self.g_ent = g_ent if config.DEVICE < 0 else g_ent.to_gpu(config.DEVICE)
-        self.g_rel = g_rel if config.DEVICE < 0 else g_rel.to_gpu(config.DEVICE)
-        self.critic = critic if config.DEVICE < 0 else critic.to_gpu(config.DEVICE)
-        self.xp = xp
-
-    def set_candidate_t(self, candidate_t):
-        self.bsz = candidate_t.shape[0]
-        self.ct_emb = self.emb.ent(candidate_t)
-
-    def __call__(self, h, r):
-        h_emb = F.broadcast_to(self.emb.ent(h).reshape(h.shape[0], -1), self.ct_emb.shape)
-        r_emb = F.broadcast_to(self.emb.rel(r).reshape(h.shape[0], -1), self.ct_emb.shape)
-        values = self.critic(F.concat([self.g_ent(h_emb), self.g_rel(r_emb), self.g_ent(self.ct_emb)]))
-        # values = F.batch_l2_norm_squared(self.g_ent(h_emb) + self.g_rel(r_emb) - self.g_ent(self.ct_emb))
-        # values += F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - self.ct_emb)).reshape(self.bsz, -1)
-        values = values.reshape(self.bsz)
-        scores = chainer.cuda.to_cpu(values.data)
-        return scores
+    def get_d_score(self, h_emb, r_emb):
+        h_emb = F.broadcast_to(h_emb, self.ct_emb.shape)
+        r_emb = F.broadcast_to(r_emb, self.ct_emb.shape)
+        values = self.d(F.concat([h_emb, r_emb, self.ct_emb]))
+        values = values.reshape(-1)
+        return values.data
 
 
 def run_ranking_test(scorer, vocab_ent, test_data):
@@ -191,7 +170,7 @@ def run_ranking_test(scorer, vocab_ent, test_data):
     data_iter = chainer.iterators.SerialIterator(test_data, batch_size=1, repeat=False, shuffle=False)
     candidate_t = xp.arange(1, len(vocab_ent) + 1, dtype=xp.int32)
     if config.DEVICE >= 0:
-        candidate_t = chainer.dataset.to_device(config.DEVICE, candidate_t) # shape of (#entity_num, embedding_size)
+        candidate_t = chainer.dataset.to_device(config.DEVICE, candidate_t)  # shape of (#entity_num, embedding_size)
     scorer.set_candidate_t(candidate_t)
 
     avgrank, hits10, count = 0, 0, 0
@@ -203,7 +182,7 @@ def run_ranking_test(scorer, vocab_ent, test_data):
 
         scores = scorer(h, r)
         sorted_index = np.argsort(scores)
-        rank = np.where(sorted_index == (t[0] - 1))[0][0] # tail ent id 1 ~ maxid, but array index: 0 ~ maxid-1
+        rank = np.where(sorted_index == (t[0] - 1))[0][0]  # tail ent id 1 ~ maxid, but array index: 0 ~ maxid-1
         avgrank += rank
         hits10 += 1 if rank < 10 else 0
         count += 1

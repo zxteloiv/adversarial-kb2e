@@ -17,6 +17,7 @@ class AbstractGANUpdator(chainer.training.StandardUpdater):
         if self.device >= 0:
             from chainer.cuda import cupy
             self.xp = cupy
+        self.reports = {}
 
     def update_core(self):
         data_iter = self.get_iterator('main')
@@ -52,7 +53,7 @@ class AbstractGANUpdator(chainer.training.StandardUpdater):
 
 class WGANUpdator(AbstractGANUpdator):
     def __init__(self, iterator, opt_g, opt_d, device, d_epoch=10, g_epoch=1, penalty_coeff=10):
-        super(WGANUpdator, self).__init__(iterator, opt_g, opt_d, device, d_epoch=10, g_epoch=1)
+        super(WGANUpdator, self).__init__(iterator, opt_g, opt_d, device, d_epoch=d_epoch, g_epoch=g_epoch)
         self.pen_coeff = penalty_coeff
 
     def update_d(self, h, r, t):
@@ -285,148 +286,82 @@ class LeastSquareGANUpdater(AbstractGANUpdator):
 
 
 class ExperimentalGANUpdater(AbstractGANUpdator):
-    def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, g_epoch, margin=1, ent_num=None):
+    def __init__(self, data_iter, opt_g, opt_d, opt_e, device, d_epoch, g_epoch, ent_num=None):
         super(ExperimentalGANUpdater, self).__init__(data_iter, opt_g, opt_d, device, d_epoch, g_epoch)
-        self.margin = margin
         self.ent_num = self.d.ent.W.shape[0] if ent_num is None else ent_num
-
-    def update_d(self, h, r, t):
-        bsz = h.shape[0]
-        h_emb, t_emb = map(lambda x: self.d.ent(x).reshape(bsz, -1), (h, t))
-        r_emb = self.d.rel(r).reshape(h.shape[0], -1)
-
-        def distance(x, y):
-            return F.sqrt(F.batch_l2_norm_squared(x - y) + 1e-7).reshape(-1, 1)
-
-        t_tilde_emb = self.g(F.concat((h_emb, r_emb)))
-        loss_d_gen = F.relu(self.margin + distance(h_emb + r_emb, t_emb) - distance(h_emb + r_emb, t_tilde_emb))
-
-        half = bsz / 2
-        h_corrupted = self.xp.random.randint(1, self.ent_num + 1, size=(half, 1))
-        t_corrupted = self.xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1))
-        h_corrupted_emb = self.d.ent(h_corrupted).reshape(half, -1)
-        t_corrupted_emb = self.d.ent(t_corrupted).reshape(bsz - half, -1)
-
-        dis_neg_h = distance(h_corrupted_emb + r_emb[:half], t_emb[:half])
-        dis_neg_t = distance((h_emb + r_emb)[half:], t_corrupted_emb)
-        dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0)  # 1:1 size for corrupted heads and tails
-
-        loss_d_neg = F.relu(self.margin * 2 + distance(h_emb + r_emb, t_emb) - dis_neg)
-
-        loss_d_gen = F.average(loss_d_gen)
-        loss_d_neg = F.average(loss_d_neg)
-        loss = loss_d_gen + loss_d_neg
-
-        self.d.cleargrads()
-        loss.backward()
-        self.get_optimizer('opt_d').update()
-        self.add_to_report(loss_d=loss, loss_d_gen=loss_d_gen, loss_d_neg=loss_d_neg)
-
-    def update_g(self, h, r, t):
-        h_emb, t_emb = map(lambda x: self.d.ent(x).reshape(h.shape[0], -1), (h, t))
-        r_emb = self.d.rel(r).reshape(h.shape[0], -1)
-        t_tilde_emb = self.g(F.concat((h_emb, r_emb)))
-
-        loss_g = F.sqrt(F.batch_l2_norm_squared(t_tilde_emb - t_emb) + 1e-7).reshape(-1, 1)
-        loss_g = F.average(loss_g)
-
-        self.g.cleargrads()
-        loss_g.backward()
-        self.get_optimizer('opt_g').update()
-        self.add_to_report(loss_g=loss_g)
-
-    @staticmethod
-    def get_report_list():
-        return ['epoch', 'iteration', 'loss_g', 'loss_d', 'loss_d_gen', 'loss_d_neg', 'elapsed_time']
-
-
-class AdvEmbUpdater(chainer.training.StandardUpdater):
-    def __init__(self, data_iter, opt_emb, opt_ent, opt_rel, opt_c, device, ent_num, rel_num, d_epoch=5, g_epoch=1):
-        super(AdvEmbUpdater, self).__init__(data_iter,
-                                            {'opt_emb': opt_emb, 'opt_ent':opt_ent, 'opt_rel':opt_rel, 'opt_c':opt_c},
-                                            device=device)
-        self.ent_num = ent_num
-        self.rel_num = rel_num
-        self.d_epoch = d_epoch
-        self.g_epoch = g_epoch
-        self.emb = opt_emb.target
-        self.g_ent = opt_ent.target
-        self.g_rel = opt_rel.target
-        self.critic = opt_c.target
+        self.opt_e = opt_e
+        self.opt_g = opt_g
+        self.opt_d = opt_d
+        self.emb = opt_e.target
         self.xp = np
         if self.device >= 0:
             from chainer.cuda import cupy
             self.xp = cupy
-        self.reports = {}
 
-    def update_core(self):
-        data_iter = self.get_iterator('main')
-        self.reports = {}
-
-        for epoch in xrange(self.d_epoch):
-            batch = data_iter.__next__()
-            example = self.converter(batch, self.device)
-
-            self.update_d(*example)
-
-        for epoch in xrange(self.g_epoch):
-            batch = data_iter.__next__()
-            example = self.converter(batch, self.device)
-
-            self.update_g(*example)
-
-        chainer.report(self.reports)
-
-    def update_d(self, *args):
-        h, r, t = args
+    def update_d(self, h, r, t):
         bsz = h.shape[0]
-        h_emb, t_emb = map(lambda x: self.emb.ent(x).reshape(bsz, -1), [h, t])
-        r_emb = self.emb.rel(r).reshape(bsz, -1)
+        h_raw, t_raw = map(lambda x: self.emb.ent(x).reshape(bsz, -1), (h, t))  # (bsz, emb_sz)
+        r_raw = self.emb.rel(r).reshape(bsz, -1)                                # (bsz, emb_sz)
 
-        t_rand_emb = self.xp.random.randn(*(t_emb.shape)).astype(self.xp.float32)
+        loss_real = -F.sum(F.log(F.sigmoid(self.d(F.concat([h_raw, r_raw, t_raw])))))
 
-        loss_pos = F.tanh(self.critic(F.concat([self.g_ent(h_emb), self.g_rel(r_emb), self.g_ent(t_emb)])))
-        loss_neg = F.tanh(self.critic(F.concat([self.g_ent(h_emb), self.g_rel(r_emb), self.g_ent(t_rand_emb)])))
-        loss_c = F.average(F.relu(0.5 + loss_pos - loss_neg))
+        all_ts = self.xp.arange(self.ent_num, dtype=self.xp.int32)          # (V,)
+        all_ts_emb = self.emb.ent(all_ts)                                   # (V, emb_sz)
+        all_ts_emb = F.broadcast_to(all_ts_emb, (bsz,) + all_ts_emb.shape)  # (bsz, V, emb_sz)
+        all_ts_emb = F.transpose(all_ts_emb, axes=(1, 0, 2))                # (V, bsz, emb_sz)
+        all_ts_emb = all_ts_emb.reshape(self.ent_num * bsz, -1)             # (V * bsz, emb_sz)
 
-        self.critic.cleargrads()
-        loss_c.backward()
-        self.get_optimizer('opt_c').update()
-        self.add_to_report(loss_c=loss_c, loss_c_pos=F.average(loss_pos), loss_c_neg=F.average(loss_neg))
+        h_emb = F.broadcast_to(h_raw, (self.ent_num, ) + h_raw.shape)       # (V, bsz, emb_sz)
+        h_emb = h_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
+        r_emb = F.broadcast_to(r_raw, (self.ent_num, ) + r_raw.shape)       # (V, bsz, emb_sz)
+        r_emb = r_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
 
-    def update_g(self, *args):
-        h, r, t = args
+        reward = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, all_ts_emb]))) + 1e-7)  # (V * bsz, 1)
+
+        logits = self.g(F.concat([h_raw, r_raw]))   # (bsz, V)
+        prob = F.softmax(logits)                    # (bsz, V)
+        prob = F.transpose(prob).reshape(-1, 1)     # (V, bsz) -> (V * bsz, 1)
+
+        loss_gen = -F.sum(reward * prob)
+
+        loss = loss_gen + loss_real
+        self.d.cleargrads()
+        loss.backward()
+        self.get_optimizer('opt_d').update()
+        self.add_to_report(loss_d=loss, loss_d_fake=loss_gen, loss_d_real=loss_real)
+
+    def update_g(self, h, r, t):
         bsz = h.shape[0]
-        h_emb, t_emb = map(lambda x: self.emb.ent(x).reshape(bsz, -1), [h, t])
-        r_emb = self.emb.rel(r).reshape(bsz, -1)
+        h_raw, t_raw = map(lambda x: self.emb.ent(x).reshape(bsz, -1), (h, t))  # (bsz, V)
+        r_raw = self.emb.rel(r).reshape(bsz, -1)                                # (bsz, V)
 
-        t_rand_emb = self.xp.random.randn(*(t_emb.shape)).astype(self.xp.float32)
+        logits = self.g(F.concat([h_raw, r_raw]))   # (bsz, V)
+        prob = F.softmax(logits)                    # (bsz, V)
+        prob = F.transpose(prob).reshape(-1, 1)     # (V, bsz) -> (V * bsz, 1)
 
-        loss_g = F.tanh(self.critic(F.concat([self.g_ent(h_emb), self.g_rel(r_emb), self.g_ent(t_rand_emb)])))
-        # loss_g = F.average(F.batch_l2_norm_squared(loss_g))
-        loss_g = F.average(loss_g)
+        all_ts = self.xp.arange(self.ent_num, dtype=self.xp.int32)          # (V,)
+        all_ts_emb = self.emb.ent(all_ts)                                   # (V, emb_sz)
+        all_ts_emb = F.broadcast_to(all_ts_emb, (bsz,) + all_ts_emb.shape)  # (bsz, V, emb_sz)
+        all_ts_emb = F.transpose(all_ts_emb, axes=(1, 0, 2))                # (V, bsz, emb_sz)
+        all_ts_emb = all_ts_emb.reshape(self.ent_num * bsz, -1)             # (V * bsz, emb_sz)
 
-        self.g_ent.cleargrads()
-        self.g_rel.cleargrads()
+        h_emb = F.broadcast_to(h_raw, (self.ent_num, ) + h_raw.shape)       # (V, bsz, emb_sz)
+        h_emb = h_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
+        r_emb = F.broadcast_to(r_raw, (self.ent_num, ) + r_raw.shape)       # (V, bsz, emb_sz)
+        r_emb = r_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
+
+        reward = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, all_ts_emb]))) + 1e-7)  # (V * bsz, 1)
+
+        loss_g = -F.sum(reward * prob)
+
+        self.g.cleargrads()
+        self.emb.cleargrads()
         loss_g.backward()
-        self.get_optimizer('opt_ent').update()
-        self.get_optimizer('opt_rel').update()
+        self.get_optimizer('opt_g').update()
+        self.opt_e.update()
         self.add_to_report(loss_g=loss_g)
 
     @staticmethod
-    def distance(x, y, eps=1e-7):
-        return F.sqrt(F.batch_l2_norm_squared(x - y) + eps)
-
-    @staticmethod
     def get_report_list():
-        return ['epoch', 'iteration', 'loss_g', 'loss_c_pos', 'loss_c_neg', 'elapsed_time']
-
-    def add_to_report(self, **kwargs):
-        self.reports.update(kwargs)
-
-
-
-
-
-
+        return ['epoch', 'iteration', 'loss_g', 'loss_d', 'loss_d_fake', 'loss_d_real', 'elapsed_time']
 
