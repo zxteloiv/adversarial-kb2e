@@ -286,17 +286,27 @@ class LeastSquareGANUpdater(AbstractGANUpdator):
 
 
 class ExperimentalGANUpdater(AbstractGANUpdator):
-    def __init__(self, data_iter, opt_g, opt_d, opt_e, device, d_epoch, g_epoch, ent_num=None):
+    def __init__(self, data_iter, opt_g, opt_d, opt_e, device, d_epoch, g_epoch, ent_num=None, sample_num=100):
         super(ExperimentalGANUpdater, self).__init__(data_iter, opt_g, opt_d, device, d_epoch, g_epoch)
         self.ent_num = self.d.ent.W.shape[0] if ent_num is None else ent_num
         self.opt_e = opt_e
         self.opt_g = opt_g
         self.opt_d = opt_d
         self.emb = opt_e.target
+        self.sample_num = sample_num
         self.xp = np
         if self.device >= 0:
             from chainer.cuda import cupy
             self.xp = cupy
+
+    def sample_g(self, h_raw, r_raw, sample_num=100):
+        bsz = h_raw.shape[0]
+        logits = self.g(F.concat([h_raw, r_raw]))                           # (bsz, V)
+        prob = F.softmax(logits).data                                       # (bsz, V)
+        samples = self.xp.empty((bsz, sample_num), dtype=self.xp.int32)     # (bsz, K=sample_num)
+        for i in xrange(bsz):
+            samples[i] = self.xp.random.choice(len(prob[i]), size=sample_num, p=prob[i])
+        return samples, prob
 
     def update_d(self, h, r, t):
         bsz = h.shape[0]
@@ -304,6 +314,19 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         r_raw = self.emb.rel(r).reshape(bsz, -1)                                # (bsz, emb_sz)
 
         loss_real = -F.sum(F.log(F.sigmoid(self.d(F.concat([h_raw, r_raw, t_raw])))))
+
+        # rand_ts, _ = self.sample_g(h_raw, r_raw, self.sample_num)           # (bsz, K), (bsz, V)
+        # rand_ts_emb = self.emb.ent(rand_ts)                                 # (bsz, K, emb_sz)
+        # rand_ts_emb = F.transpose(rand_ts_emb, axes=(1, 0, 2))              # (K, bsz, emb_sz)
+        # rand_ts_emb = rand_ts_emb.reshape(self.sample_num * bsz, -1)        # (K * bsz, emb_sz)
+        #
+        # h_emb = F.broadcast_to(h_raw, (self.sample_num, ) + h_raw.shape)    # (K, bsz, emb_sz)
+        # h_emb = h_emb.reshape(self.sample_num * bsz, -1)                    # (K * bsz, emb_sz)
+        # r_emb = F.broadcast_to(r_raw, (self.sample_num, ) + r_raw.shape)    # (K, bsz, emb_sz)
+        # r_emb = r_emb.reshape(self.sample_num * bsz, -1)                    # (K * bsz, emb_sz)
+        #
+        # loss_gen = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, rand_ts_emb]))))  # (K * bsz, 1)
+        # loss_gen = -F.sum(loss_gen / self.sample_num)
 
         all_ts = self.xp.arange(self.ent_num, dtype=self.xp.int32)          # (V,)
         all_ts_emb = self.emb.ent(all_ts)                                   # (V, emb_sz)
@@ -326,8 +349,10 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
 
         loss = loss_gen + loss_real
         self.d.cleargrads()
+        self.emb.cleargrads()
         loss.backward()
         self.get_optimizer('opt_d').update()
+        self.opt_e.update()
         self.add_to_report(loss_d=loss, loss_d_fake=loss_gen, loss_d_real=loss_real)
 
     def update_g(self, h, r, t):
@@ -352,13 +377,11 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
 
         reward = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, all_ts_emb]))) + 1e-7)  # (V * bsz, 1)
 
-        loss_g = -F.sum(reward * prob)
+        loss_g = F.sum(reward * prob)
 
         self.g.cleargrads()
-        self.emb.cleargrads()
         loss_g.backward()
         self.get_optimizer('opt_g').update()
-        self.opt_e.update()
         self.add_to_report(loss_g=loss_g)
 
     @staticmethod

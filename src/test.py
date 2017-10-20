@@ -145,30 +145,34 @@ class Experimental_Scorer(object):
         self.ct_emb = self.e.ent(candidate_t)
 
     def __call__(self, h, r):
-        h_raw = self.e.ent(h).reshape(h.shape[0], -1)
-        r_raw = self.e.rel(r).reshape(r.shape[0], -1)
-        values = self.get_d_score(h_raw, r_raw)
-        s = chainer.cuda.to_cpu(values)
+        h_raw = self.e.ent(h).reshape(h.shape[0], -1)   # (1, emb_sz)
+        r_raw = self.e.rel(r).reshape(r.shape[0], -1)   # (1, emb_sz)
+        d_value = self.get_d_score(h_raw, r_raw)
+        g_value = self.get_g_score(h_raw, r_raw)
+        value = - d_value - g_value
+        # value = -g_value
+        # value = -d_value
+        s = chainer.cuda.to_cpu(value.data)
         return s
 
     def get_g_score(self, h_emb, r_emb):
-        logits = self.g(F.concat([h_emb, r_emb]))
-        prob = F.softmax(logits)
-        return prob.data[0]
+        logits = self.g(F.concat([h_emb, r_emb])).reshape(-1)
+        # prob = F.softmax(logits)
+        return logits
 
     def get_d_score(self, h_emb, r_emb):
         h_emb = F.broadcast_to(h_emb, self.ct_emb.shape)
         r_emb = F.broadcast_to(r_emb, self.ct_emb.shape)
         values = self.d(F.concat([h_emb, r_emb, self.ct_emb]))
         values = values.reshape(-1)
-        return values.data
+        return values
 
 
 def run_ranking_test(scorer, vocab_ent, test_data):
     xp = scorer.xp
 
     data_iter = chainer.iterators.SerialIterator(test_data, batch_size=1, repeat=False, shuffle=False)
-    candidate_t = xp.arange(1, len(vocab_ent) + 1, dtype=xp.int32)
+    candidate_t = xp.arange(0, len(vocab_ent) + 1, dtype=xp.int32)
     if config.DEVICE >= 0:
         candidate_t = chainer.dataset.to_device(config.DEVICE, candidate_t)  # shape of (#entity_num, embedding_size)
     scorer.set_candidate_t(candidate_t)
@@ -182,7 +186,7 @@ def run_ranking_test(scorer, vocab_ent, test_data):
 
         scores = scorer(h, r)
         sorted_index = np.argsort(scores)
-        rank = np.where(sorted_index == (t[0] - 1))[0][0]  # tail ent id 1 ~ maxid, but array index: 0 ~ maxid-1
+        rank = np.where(sorted_index == t[0])[0][0]  # tail ent id 1 ~ maxid, but the sorted index: 0 ~ maxid
         avgrank += rank
         hits10 += 1 if rank < 10 else 0
         count += 1
