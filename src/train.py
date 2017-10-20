@@ -19,7 +19,6 @@ def main():
     # trainer = GAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer = ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    # trainer = AdversarialEmbedding_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer.run()
 
 
@@ -161,44 +160,6 @@ def ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     trainer.extend(extensions.snapshot_object(discriminator, 'd_iter_{.updater.iteration}'),
                    trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
     trainer.extend(extensions.snapshot_object(embeddings, 'e_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-
-    return trainer
-
-
-def AdversarialEmbedding_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
-    embeddings = models.Embeddings(config.EMBED_SZ, len(vocab_ent) + 1, len(vocab_rel) + 1)
-    gen_ent = models.VarMLP([config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ])
-    gen_rel = models.VarMLP([config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ])
-    critic = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
-
-    for i, m in enumerate([embeddings, gen_ent, gen_rel, critic]):
-        if len(sys.argv) > i + 1:  # train.py(argv[0]) emb(argv[1]) ent(argv[2]) rel(argv[3]) critic(argv[4])
-            chainer.serializers.load_npz(sys.argv[i + 1], m)
-
-    if config.DEVICE >= 0:
-        chainer.cuda.get_device_from_id(config.DEVICE).use()
-        for m in [embeddings, gen_ent, gen_rel, critic]:
-            m.to_gpu(config.DEVICE)
-
-    opts = [chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1) for i in xrange(4)]
-    map(lambda o, m: o.setup(m), opts, [embeddings, gen_ent, gen_rel, critic])
-
-    updater = updaters.AdvEmbUpdater(train_iter, *opts,
-                                     device=config.DEVICE,
-                                     ent_num=len(vocab_ent) + 1, rel_num=len(vocab_rel) + 1,
-                                     d_epoch=config.OPT_D_EPOCH, g_epoch=config.OPT_G_EPOCH)
-
-    trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
-    trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
-    trainer.extend(extensions.PrintReport(updater.get_report_list()))
-    trainer.extend(extensions.snapshot_object(embeddings, 'emb_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-    trainer.extend(extensions.snapshot_object(critic, 'c_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-    trainer.extend(extensions.snapshot_object(gen_ent, 'g_ent_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-    trainer.extend(extensions.snapshot_object(gen_rel, 'g_rel_iter_{.updater.iteration}'),
                    trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
 
     return trainer
