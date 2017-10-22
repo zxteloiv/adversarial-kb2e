@@ -18,8 +18,8 @@ ADAM_ALPHA = 1e-3
 ADAM_BETA1 = 0.5
 
 SAVE_ITER_INTERVAL = 200
-# TRAINING_LIMIT = (5000, 'iteration')
-TRAINING_LIMIT = (5000, 'epoch')
+TRAINING_LIMIT = (5000, 'iteration')
+# TRAINING_LIMIT = (5000, 'epoch')
 
 # model conf
 EMBED_SZ = 50
