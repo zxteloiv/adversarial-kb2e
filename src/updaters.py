@@ -322,7 +322,7 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         r_emb = F.broadcast_to(r_raw, (self.sample_num, ) + r_raw.shape)    # (K, bsz, emb_sz)
         r_emb = r_emb.reshape(self.sample_num * bsz, -1)                    # (K * bsz, emb_sz)
 
-        loss_gen = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, rand_ts_emb]))))  # (K * bsz, 1)
+        loss_gen = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, rand_ts_emb]))) + 1e-7)   # (K * bsz, 1)
         loss_gen = -F.sum(loss_gen / self.sample_num)
 
         loss = loss_gen + loss_real
