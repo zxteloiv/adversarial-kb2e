@@ -325,25 +325,6 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         loss_gen = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, rand_ts_emb]))))  # (K * bsz, 1)
         loss_gen = -F.sum(loss_gen / self.sample_num)
 
-        # all_ts = self.xp.arange(self.ent_num, dtype=self.xp.int32)          # (V,)
-        # all_ts_emb = self.emb.ent(all_ts)                                   # (V, emb_sz)
-        # all_ts_emb = F.broadcast_to(all_ts_emb, (bsz,) + all_ts_emb.shape)  # (bsz, V, emb_sz)
-        # all_ts_emb = F.transpose(all_ts_emb, axes=(1, 0, 2))                # (V, bsz, emb_sz)
-        # all_ts_emb = all_ts_emb.reshape(self.ent_num * bsz, -1)             # (V * bsz, emb_sz)
-        #
-        # h_emb = F.broadcast_to(h_raw, (self.ent_num, ) + h_raw.shape)       # (V, bsz, emb_sz)
-        # h_emb = h_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
-        # r_emb = F.broadcast_to(r_raw, (self.ent_num, ) + r_raw.shape)       # (V, bsz, emb_sz)
-        # r_emb = r_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
-        #
-        # reward = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, all_ts_emb]))) + 1e-7)  # (V * bsz, 1)
-        #
-        # logits = self.g(F.concat([h_raw, r_raw]))   # (bsz, V)
-        # prob = F.softmax(logits)                    # (bsz, V)
-        # prob = F.transpose(prob).reshape(-1, 1)     # (V, bsz) -> (V * bsz, 1)
-        #
-        # loss_gen = -F.sum(reward * prob)
-
         loss = loss_gen + loss_real
         self.d.cleargrads()
         self.emb.cleargrads()
@@ -376,25 +357,6 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         rand_probs = F.transpose(rand_probs).reshape(-1, 1)                 # (K, bsz) -> (K * bsz, 1)
 
         loss_g = F.sum(rand_probs * reward) / self.sample_num
-
-        # logits = self.g(F.concat([h_raw, r_raw]))   # (bsz, V)
-        # prob = F.softmax(logits)                    # (bsz, V)
-        # prob = F.transpose(prob).reshape(-1, 1)     # (V, bsz) -> (V * bsz, 1)
-        #
-        # all_ts = self.xp.arange(self.ent_num, dtype=self.xp.int32)          # (V,)
-        # all_ts_emb = self.emb.ent(all_ts)                                   # (V, emb_sz)
-        # all_ts_emb = F.broadcast_to(all_ts_emb, (bsz,) + all_ts_emb.shape)  # (bsz, V, emb_sz)
-        # all_ts_emb = F.transpose(all_ts_emb, axes=(1, 0, 2))                # (V, bsz, emb_sz)
-        # all_ts_emb = all_ts_emb.reshape(self.ent_num * bsz, -1)             # (V * bsz, emb_sz)
-        #
-        # h_emb = F.broadcast_to(h_raw, (self.ent_num, ) + h_raw.shape)       # (V, bsz, emb_sz)
-        # h_emb = h_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
-        # r_emb = F.broadcast_to(r_raw, (self.ent_num, ) + r_raw.shape)       # (V, bsz, emb_sz)
-        # r_emb = r_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
-        #
-        # reward = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, all_ts_emb]))) + 1e-7)  # (V * bsz, 1)
-        #
-        # loss_g = F.sum(reward * prob)
 
         self.g.cleargrads()
         loss_g.backward()
