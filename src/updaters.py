@@ -300,12 +300,9 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
             self.xp = cupy
 
     def sample_g(self, h_raw, r_raw, sample_num=100):
-        bsz = h_raw.shape[0]
         logits = self.g(F.concat([h_raw, r_raw]))                           # (bsz, V)
-        prob = F.softmax(logits).data                                       # (bsz, V)
-        samples = self.xp.empty((bsz, sample_num), dtype=self.xp.int32)     # (bsz, K=sample_num)
-        for i in xrange(bsz):
-            samples[i] = self.xp.random.choice(len(prob[i]), size=sample_num, p=prob[i])
+        prob = F.softmax(logits)                                            # (bsz, V)
+        samples = self.batch_multinomial(prob, sample_num)
         return samples, prob
 
     def update_d(self, h, r, t):
@@ -315,37 +312,37 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
 
         loss_real = -F.sum(F.log(F.sigmoid(self.d(F.concat([h_raw, r_raw, t_raw])))))
 
-        # rand_ts, _ = self.sample_g(h_raw, r_raw, self.sample_num)           # (bsz, K), (bsz, V)
-        # rand_ts_emb = self.emb.ent(rand_ts)                                 # (bsz, K, emb_sz)
-        # rand_ts_emb = F.transpose(rand_ts_emb, axes=(1, 0, 2))              # (K, bsz, emb_sz)
-        # rand_ts_emb = rand_ts_emb.reshape(self.sample_num * bsz, -1)        # (K * bsz, emb_sz)
+        rand_ts, _ = self.sample_g(h_raw, r_raw, self.sample_num)           # (bsz, K), (bsz, V)
+        rand_ts_emb = self.emb.ent(rand_ts)                                 # (bsz, K, emb_sz)
+        rand_ts_emb = F.transpose(rand_ts_emb, axes=(1, 0, 2))              # (K, bsz, emb_sz)
+        rand_ts_emb = rand_ts_emb.reshape(self.sample_num * bsz, -1)        # (K * bsz, emb_sz)
+
+        h_emb = F.broadcast_to(h_raw, (self.sample_num, ) + h_raw.shape)    # (K, bsz, emb_sz)
+        h_emb = h_emb.reshape(self.sample_num * bsz, -1)                    # (K * bsz, emb_sz)
+        r_emb = F.broadcast_to(r_raw, (self.sample_num, ) + r_raw.shape)    # (K, bsz, emb_sz)
+        r_emb = r_emb.reshape(self.sample_num * bsz, -1)                    # (K * bsz, emb_sz)
+
+        loss_gen = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, rand_ts_emb]))))  # (K * bsz, 1)
+        loss_gen = -F.sum(loss_gen / self.sample_num)
+
+        # all_ts = self.xp.arange(self.ent_num, dtype=self.xp.int32)          # (V,)
+        # all_ts_emb = self.emb.ent(all_ts)                                   # (V, emb_sz)
+        # all_ts_emb = F.broadcast_to(all_ts_emb, (bsz,) + all_ts_emb.shape)  # (bsz, V, emb_sz)
+        # all_ts_emb = F.transpose(all_ts_emb, axes=(1, 0, 2))                # (V, bsz, emb_sz)
+        # all_ts_emb = all_ts_emb.reshape(self.ent_num * bsz, -1)             # (V * bsz, emb_sz)
         #
-        # h_emb = F.broadcast_to(h_raw, (self.sample_num, ) + h_raw.shape)    # (K, bsz, emb_sz)
-        # h_emb = h_emb.reshape(self.sample_num * bsz, -1)                    # (K * bsz, emb_sz)
-        # r_emb = F.broadcast_to(r_raw, (self.sample_num, ) + r_raw.shape)    # (K, bsz, emb_sz)
-        # r_emb = r_emb.reshape(self.sample_num * bsz, -1)                    # (K * bsz, emb_sz)
+        # h_emb = F.broadcast_to(h_raw, (self.ent_num, ) + h_raw.shape)       # (V, bsz, emb_sz)
+        # h_emb = h_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
+        # r_emb = F.broadcast_to(r_raw, (self.ent_num, ) + r_raw.shape)       # (V, bsz, emb_sz)
+        # r_emb = r_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
         #
-        # loss_gen = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, rand_ts_emb]))))  # (K * bsz, 1)
-        # loss_gen = -F.sum(loss_gen / self.sample_num)
-
-        all_ts = self.xp.arange(self.ent_num, dtype=self.xp.int32)          # (V,)
-        all_ts_emb = self.emb.ent(all_ts)                                   # (V, emb_sz)
-        all_ts_emb = F.broadcast_to(all_ts_emb, (bsz,) + all_ts_emb.shape)  # (bsz, V, emb_sz)
-        all_ts_emb = F.transpose(all_ts_emb, axes=(1, 0, 2))                # (V, bsz, emb_sz)
-        all_ts_emb = all_ts_emb.reshape(self.ent_num * bsz, -1)             # (V * bsz, emb_sz)
-
-        h_emb = F.broadcast_to(h_raw, (self.ent_num, ) + h_raw.shape)       # (V, bsz, emb_sz)
-        h_emb = h_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
-        r_emb = F.broadcast_to(r_raw, (self.ent_num, ) + r_raw.shape)       # (V, bsz, emb_sz)
-        r_emb = r_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
-
-        reward = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, all_ts_emb]))) + 1e-7)  # (V * bsz, 1)
-
-        logits = self.g(F.concat([h_raw, r_raw]))   # (bsz, V)
-        prob = F.softmax(logits)                    # (bsz, V)
-        prob = F.transpose(prob).reshape(-1, 1)     # (V, bsz) -> (V * bsz, 1)
-
-        loss_gen = -F.sum(reward * prob)
+        # reward = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, all_ts_emb]))) + 1e-7)  # (V * bsz, 1)
+        #
+        # logits = self.g(F.concat([h_raw, r_raw]))   # (bsz, V)
+        # prob = F.softmax(logits)                    # (bsz, V)
+        # prob = F.transpose(prob).reshape(-1, 1)     # (V, bsz) -> (V * bsz, 1)
+        #
+        # loss_gen = -F.sum(reward * prob)
 
         loss = loss_gen + loss_real
         self.d.cleargrads()
@@ -356,33 +353,79 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         self.add_to_report(loss_d=loss, loss_d_fake=loss_gen, loss_d_real=loss_real)
 
     def update_g(self, h, r, t):
+        pass
         bsz = h.shape[0]
         h_raw, t_raw = map(lambda x: self.emb.ent(x).reshape(bsz, -1), (h, t))  # (bsz, V)
         r_raw = self.emb.rel(r).reshape(bsz, -1)                                # (bsz, V)
 
-        logits = self.g(F.concat([h_raw, r_raw]))   # (bsz, V)
-        prob = F.softmax(logits)                    # (bsz, V)
-        prob = F.transpose(prob).reshape(-1, 1)     # (V, bsz) -> (V * bsz, 1)
+        rand_ts, probs = self.sample_g(h_raw, r_raw, self.sample_num)       # (bsz, K), (bsz, V)
+        rand_ts_emb = self.emb.ent(rand_ts)                                 # (bsz, K, emb_sz)
+        rand_ts_emb = F.transpose(rand_ts_emb, axes=(1, 0, 2))              # (K, bsz, emb_sz)
+        rand_ts_emb = rand_ts_emb.reshape(self.sample_num * bsz, -1)        # (K * bsz, emb_sz)
 
-        all_ts = self.xp.arange(self.ent_num, dtype=self.xp.int32)          # (V,)
-        all_ts_emb = self.emb.ent(all_ts)                                   # (V, emb_sz)
-        all_ts_emb = F.broadcast_to(all_ts_emb, (bsz,) + all_ts_emb.shape)  # (bsz, V, emb_sz)
-        all_ts_emb = F.transpose(all_ts_emb, axes=(1, 0, 2))                # (V, bsz, emb_sz)
-        all_ts_emb = all_ts_emb.reshape(self.ent_num * bsz, -1)             # (V * bsz, emb_sz)
+        h_emb = F.broadcast_to(h_raw, (self.sample_num, ) + h_raw.shape)    # (K, bsz, emb_sz)
+        h_emb = h_emb.reshape(self.sample_num * bsz, -1)                    # (K * bsz, emb_sz)
+        r_emb = F.broadcast_to(r_raw, (self.sample_num, ) + r_raw.shape)    # (K, bsz, emb_sz)
+        r_emb = r_emb.reshape(self.sample_num * bsz, -1)                    # (K * bsz, emb_sz)
 
-        h_emb = F.broadcast_to(h_raw, (self.ent_num, ) + h_raw.shape)       # (V, bsz, emb_sz)
-        h_emb = h_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
-        r_emb = F.broadcast_to(r_raw, (self.ent_num, ) + r_raw.shape)       # (V, bsz, emb_sz)
-        r_emb = r_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
+        reward = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, rand_ts_emb]))) + 1e-7)  # (K * bsz, 1)
 
-        reward = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, all_ts_emb]))) + 1e-7)  # (V * bsz, 1)
+        rand_probs = self.xp.empty(rand_ts.shape, self.xp.float32)          # (bsz, K)
+        for i in xrange(len(rand_probs)):
+            rand_probs[i] = probs[i][rand_ts.data[i]].data
+        rand_probs = F.transpose(rand_probs).reshape(-1, 1)                 # (K, bsz) -> (K * bsz, 1)
 
-        loss_g = F.sum(reward * prob)
+        loss_g = F.sum(rand_probs * reward) / self.sample_num
+
+        # logits = self.g(F.concat([h_raw, r_raw]))   # (bsz, V)
+        # prob = F.softmax(logits)                    # (bsz, V)
+        # prob = F.transpose(prob).reshape(-1, 1)     # (V, bsz) -> (V * bsz, 1)
+        #
+        # all_ts = self.xp.arange(self.ent_num, dtype=self.xp.int32)          # (V,)
+        # all_ts_emb = self.emb.ent(all_ts)                                   # (V, emb_sz)
+        # all_ts_emb = F.broadcast_to(all_ts_emb, (bsz,) + all_ts_emb.shape)  # (bsz, V, emb_sz)
+        # all_ts_emb = F.transpose(all_ts_emb, axes=(1, 0, 2))                # (V, bsz, emb_sz)
+        # all_ts_emb = all_ts_emb.reshape(self.ent_num * bsz, -1)             # (V * bsz, emb_sz)
+        #
+        # h_emb = F.broadcast_to(h_raw, (self.ent_num, ) + h_raw.shape)       # (V, bsz, emb_sz)
+        # h_emb = h_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
+        # r_emb = F.broadcast_to(r_raw, (self.ent_num, ) + r_raw.shape)       # (V, bsz, emb_sz)
+        # r_emb = r_emb.reshape(self.ent_num * bsz, -1)                       # (V * bsz, emb_sz)
+        #
+        # reward = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, all_ts_emb]))) + 1e-7)  # (V * bsz, 1)
+        #
+        # loss_g = F.sum(reward * prob)
 
         self.g.cleargrads()
         loss_g.backward()
         self.get_optimizer('opt_g').update()
         self.add_to_report(loss_g=loss_g)
+
+    def batch_multinomial(self, batch_probs, size):
+        """
+        Sample the multinomial distributions given a batch of probabilities
+        :param batch_probs: has shape (batch_size, V), a batch of probabilities
+        :param size: int, the number of examples to sample every distribution
+        :return: has shape (batch_size, size)
+        """
+        log_probs = F.log(batch_probs)                                      # (bsz, V)
+        nums = self.xp.empty((size, log_probs.shape[0])).astype('int32')    # (K, bsz)
+        for i in xrange(size):
+            noise = self.xp.random.rand(*log_probs.shape).astype('f')   # bsz, V
+            rand = F.argmax(log_probs - F.log(-F.log(noise)), axis=1)
+            nums[i] = rand.data
+
+        # # sampling the batch of distributions for K times directly will exhaust the GPU memory,
+        # # thus still we choose to use sample K numbers each on each
+
+        # K_log_probs = F.broadcast_to(log_probs, (size,) + log_probs.shape)  # (K, bsz, V)
+        # noise = self.xp.random.rand(*K_log_probs.shape).astype('f')         # (K, bsz, V)
+        # nums = F.argmax(K_log_probs - F.log(-F.log(noise)), axis=2)         # (K, bsz)
+        # nums_t = F.transpose(nums)
+        # del log_probs, K_log_probs, noise, nums
+        # return nums_t
+        # return self.xp.ones((batch_probs.shape[0], size), dtype=self.xp.int32)
+        return F.transpose(nums)
 
     @staticmethod
     def get_report_list():
