@@ -334,7 +334,6 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         self.add_to_report(loss_d=loss, loss_d_fake=loss_gen, loss_d_real=loss_real)
 
     def update_g(self, h, r, t):
-        pass
         bsz = h.shape[0]
         h_raw, t_raw = map(lambda x: self.emb.ent(x).reshape(bsz, -1), (h, t))  # (bsz, V)
         r_raw = self.emb.rel(r).reshape(bsz, -1)                                # (bsz, V)
@@ -349,14 +348,15 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         r_emb = F.broadcast_to(r_raw, (self.sample_num, ) + r_raw.shape)    # (K, bsz, emb_sz)
         r_emb = r_emb.reshape(self.sample_num * bsz, -1)                    # (K * bsz, emb_sz)
 
-        reward = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, rand_ts_emb]))) + 1e-7)  # (K * bsz, 1)
+        reward = -F.sigmoid(self.d(F.concat([h_emb, r_emb, rand_ts_emb])))  # (K * bsz, 1)
 
         rand_probs = self.xp.empty(rand_ts.shape, self.xp.float32)          # (bsz, K)
         for i in xrange(len(rand_probs)):
             rand_probs[i] = probs[i][rand_ts.data[i]].data
         rand_probs = F.transpose(rand_probs).reshape(-1, 1)                 # (K, bsz) -> (K * bsz, 1)
+        log_rand_probs = F.log(rand_probs)
 
-        loss_g = F.sum(rand_probs * reward) / self.sample_num
+        loss_g = F.sum(log_rand_probs * reward) / self.sample_num
 
         self.g.cleargrads()
         loss_g.backward()
@@ -392,4 +392,35 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
     @staticmethod
     def get_report_list():
         return ['epoch', 'iteration', 'loss_g', 'loss_d', 'loss_d_fake', 'loss_d_real', 'elapsed_time']
+
+
+class MLEGenUpdater(chainer.training.StandardUpdater):
+    def __init__(self, data_iter, opt_g, opt_e, device):
+        super(MLEGenUpdater, self).__init__(data_iter, opt_g, device=device)
+        self.opt_e = opt_e
+        self.opt_g = opt_g
+        self.g = opt_g.target
+        self.emb = opt_e.target
+
+    def update_core(self):
+        data_iter = self.get_iterator('main')
+        batch = data_iter.__next__()
+        h, r, t = self.converter(batch, self.device)
+        bsz = h.shape[0]
+        h_emb = self.emb.ent(h).reshape(bsz, -1)    # (bsz, emb_sz)
+        r_emb = self.emb.rel(r).reshape(bsz, -1)    # (bsz, emb_sz)
+        logits = self.g(F.concat([h_emb, r_emb]))   # (bsz, V)
+        loss = F.softmax_cross_entropy(logits, t.reshape(-1))   # (bsz, V)
+
+        self.g.cleargrads()
+        self.emb.cleargrads()
+        loss.backward()
+        self.get_optimizer('main').update()
+        self.opt_e.update()
+
+        chainer.report({'loss_g': loss})
+
+    def get_report_list(self):
+        return ['epoch', 'iteration', 'loss_g', 'elapsed_time']
+
 

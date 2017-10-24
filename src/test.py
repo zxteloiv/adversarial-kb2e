@@ -148,10 +148,10 @@ class Experimental_Scorer(object):
         h_raw = self.e.ent(h).reshape(h.shape[0], -1)   # (1, emb_sz)
         r_raw = self.e.rel(r).reshape(r.shape[0], -1)   # (1, emb_sz)
         d_value = self.get_d_score(h_raw, r_raw)
-        g_value = self.get_g_score(h_raw, r_raw)
-        value = - d_value - g_value
+        # g_value = self.get_g_score(h_raw, r_raw)
+        # value = - d_value - g_value
         # value = -g_value
-        # value = -d_value
+        value = -d_value
         s = chainer.cuda.to_cpu(value.data)
         return s
 

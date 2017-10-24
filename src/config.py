@@ -17,7 +17,7 @@ SGD_LR = 0.01  # learning rate for SGD only
 ADAM_ALPHA = 1e-3
 ADAM_BETA1 = 0.5
 
-SAVE_ITER_INTERVAL = 200
+SAVE_ITER_INTERVAL = 1000
 TRAINING_LIMIT = (5000, 'iteration')
 # TRAINING_LIMIT = (5000, 'epoch')
 

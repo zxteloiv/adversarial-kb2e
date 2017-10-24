@@ -18,7 +18,8 @@ def main():
     # trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = GAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    trainer = ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    # trainer = ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    trainer = MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer.run()
 
 
@@ -119,6 +120,36 @@ def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     trainer.extend(extensions.snapshot_object(generator, 'gen_iter_{.updater.iteration}'),
                    trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
     trainer.extend(extensions.snapshot_object(discriminator, 'd_iter_{.updater.iteration}'),
+                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
+
+    return trainer
+
+
+def MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
+    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
+    embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    if len(sys.argv) > 1:
+        chainer.serializers.load_npz(sys.argv[1], generator)
+    if len(sys.argv) > 2:
+        chainer.serializers.load_npz(sys.argv[2], embeddings)
+
+    if config.DEVICE >= 0:
+        chainer.cuda.get_device_from_id(config.DEVICE).use()
+        generator.to_gpu(config.DEVICE)
+        embeddings.to_gpu(config.DEVICE)
+
+    opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
+    opt_e = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
+    opt_g.setup(generator)
+    opt_e.setup(embeddings)
+    updater = updaters.MLEGenUpdater(train_iter, opt_g, opt_e, config.DEVICE)
+    trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
+    trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
+    trainer.extend(extensions.PrintReport(updater.get_report_list()))
+    trainer.extend(extensions.snapshot_object(generator, 'g_iter_{.updater.iteration}'),
+                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
+    trainer.extend(extensions.snapshot_object(embeddings, 'e_iter_{.updater.iteration}'),
                    trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
 
     return trainer
