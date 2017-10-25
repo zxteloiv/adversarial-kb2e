@@ -18,8 +18,8 @@ def main():
     # trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = GAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    # trainer = ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    trainer = MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    trainer = ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    # trainer = MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer.run()
 
 
@@ -143,7 +143,10 @@ def MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     opt_e = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt_g.setup(generator)
     opt_e.setup(embeddings)
-    updater = updaters.MLEGenUpdater(train_iter, opt_g, opt_e, config.DEVICE)
+
+    # updater = updaters.MLEGenUpdater(train_iter, opt_g, opt_e, config.DEVICE)
+    updater = updaters.RKLGenUpdater(train_iter, opt_g, opt_e, config.DEVICE, config.SAMPLE_NUM)
+
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
     trainer.extend(extensions.PrintReport(updater.get_report_list()))

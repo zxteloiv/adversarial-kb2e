@@ -16,8 +16,9 @@ OPT_G_EPOCH = 1  # how many epochs are needed for training a generator in one it
 SGD_LR = 0.01  # learning rate for SGD only
 ADAM_ALPHA = 1e-3
 ADAM_BETA1 = 0.5
+SAMPLE_NUM = 100
 
-SAVE_ITER_INTERVAL = 1000
+SAVE_ITER_INTERVAL = 200
 TRAINING_LIMIT = (5000, 'iteration')
 # TRAINING_LIMIT = (5000, 'epoch')
 

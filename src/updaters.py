@@ -302,7 +302,7 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
     def sample_g(self, h_raw, r_raw, sample_num=100):
         logits = self.g(F.concat([h_raw, r_raw]))                           # (bsz, V)
         prob = F.softmax(logits)                                            # (bsz, V)
-        samples = self.batch_multinomial(prob, sample_num)
+        samples = self.batch_multinomial(prob, sample_num)                  # (K, bsz)
         return samples, prob
 
     def update_d(self, h, r, t):
@@ -312,9 +312,8 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
 
         loss_real = -F.sum(F.log(F.sigmoid(self.d(F.concat([h_raw, r_raw, t_raw])))))
 
-        rand_ts, _ = self.sample_g(h_raw, r_raw, self.sample_num)           # (bsz, K), (bsz, V)
-        rand_ts_emb = self.emb.ent(rand_ts)                                 # (bsz, K, emb_sz)
-        rand_ts_emb = F.transpose(rand_ts_emb, axes=(1, 0, 2))              # (K, bsz, emb_sz)
+        rand_ts, _ = self.sample_g(h_raw, r_raw, self.sample_num)           # (K, bsz), (bsz, V)
+        rand_ts_emb = self.emb.ent(rand_ts)                                 # (K, bsz, emb_sz)
         rand_ts_emb = rand_ts_emb.reshape(self.sample_num * bsz, -1)        # (K * bsz, emb_sz)
 
         h_emb = F.broadcast_to(h_raw, (self.sample_num, ) + h_raw.shape)    # (K, bsz, emb_sz)
@@ -338,9 +337,8 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         h_raw, t_raw = map(lambda x: self.emb.ent(x).reshape(bsz, -1), (h, t))  # (bsz, V)
         r_raw = self.emb.rel(r).reshape(bsz, -1)                                # (bsz, V)
 
-        rand_ts, probs = self.sample_g(h_raw, r_raw, self.sample_num)       # (bsz, K), (bsz, V)
-        rand_ts_emb = self.emb.ent(rand_ts)                                 # (bsz, K, emb_sz)
-        rand_ts_emb = F.transpose(rand_ts_emb, axes=(1, 0, 2))              # (K, bsz, emb_sz)
+        rand_ts, probs = self.sample_g(h_raw, r_raw, self.sample_num)       # (K, bsz), (bsz, V)
+        rand_ts_emb = self.emb.ent(rand_ts)                                 # (K, bsz, emb_sz)
         rand_ts_emb = rand_ts_emb.reshape(self.sample_num * bsz, -1)        # (K * bsz, emb_sz)
 
         h_emb = F.broadcast_to(h_raw, (self.sample_num, ) + h_raw.shape)    # (K, bsz, emb_sz)
@@ -350,11 +348,13 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
 
         reward = -F.sigmoid(self.d(F.concat([h_emb, r_emb, rand_ts_emb])))  # (K * bsz, 1)
 
-        rand_probs = self.xp.empty(rand_ts.shape, self.xp.float32)          # (bsz, K)
-        for i in xrange(len(rand_probs)):
-            rand_probs[i] = probs[i][rand_ts.data[i]].data
-        rand_probs = F.transpose(rand_probs).reshape(-1, 1)                 # (K, bsz) -> (K * bsz, 1)
-        log_rand_probs = F.log(rand_probs)
+        list_probs = []                                                     # [(bsz, 1)], len=K
+        for r in xrange(len(rand_ts)):
+            rand_probs = F.select_item(probs, rand_ts[r].reshape(-1))       # (bsz,)
+            rand_probs = F.expand_dims(rand_probs, 1)                       # (bsz, 1)
+            list_probs.append(rand_probs)
+        rand_probs = F.hstack(list_probs).reshape(-1, 1)                    # (bsz, K) -> (bsz * K, 1)
+        log_rand_probs = F.log(rand_probs + 1e-7)                           # (bsz * K, 1)
 
         loss_g = F.sum(log_rand_probs * reward) / self.sample_num
 
@@ -387,7 +387,7 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         # del log_probs, K_log_probs, noise, nums
         # return nums_t
         # return self.xp.ones((batch_probs.shape[0], size), dtype=self.xp.int32)
-        return F.transpose(nums)
+        return nums  #F.transpose(nums)
 
     @staticmethod
     def get_report_list():
@@ -423,4 +423,82 @@ class MLEGenUpdater(chainer.training.StandardUpdater):
     def get_report_list(self):
         return ['epoch', 'iteration', 'loss_g', 'elapsed_time']
 
+
+class RKLGenUpdater(chainer.training.StandardUpdater):
+    """
+    Reversed KL divergence
+    """
+    def __init__(self, data_iter, opt_g, opt_e, device, sample_num=100):
+        super(RKLGenUpdater, self).__init__(data_iter, opt_g, device=device)
+        self.opt_e = opt_e
+        self.opt_g = opt_g
+        self.g = opt_g.target
+        self.emb = opt_e.target
+        self.sample_num = sample_num
+        self.xp = np
+        if self.device >= 0:
+            from chainer.cuda import cupy
+            self.xp = cupy
+
+    def update_core(self):
+        data_iter = self.get_iterator('main')
+        batch = data_iter.__next__()
+        h, r, t = self.converter(batch, self.device)
+        bsz = h.shape[0]
+        h_emb = self.emb.ent(h).reshape(bsz, -1)    # (bsz, emb_sz)
+        r_emb = self.emb.rel(r).reshape(bsz, -1)    # (bsz, emb_sz)
+        temperature = 1.0
+        logits = self.g(F.concat([h_emb, r_emb]))   # (bsz, V)
+        probs = F.softmax(logits / temperature)     # (bsz, V)
+
+        # \nabla_\theta J \simeq
+        # \sum_{h,r}\frac{1}{K}\sum_{k=1}^K
+        #       (\log \frac{p_\theta(\tilde t_k \mid h, r)}{p(\tilde t_k\mid h, r)}+1)
+        #       \nabla_\theta\log p_\theta(\tilde t_k\mid h, r)
+        rand_ts = self.batch_multinomial(probs, self.sample_num)            # (K, bsz)
+
+        list_probs = []                                                     # [(bsz, 1)], len=K
+        for r in xrange(len(rand_ts)):
+            rand_probs = F.select_item(probs, rand_ts[r].reshape(-1))       # (bsz,)
+            rand_probs = F.expand_dims(rand_probs, 1)                       # (bsz, 1)
+            list_probs.append(rand_probs)
+        rand_probs = F.hstack(list_probs).reshape(-1, 1)                    # (bsz, K) -> (bsz * K, 1)
+        log_probs = F.log(rand_probs + 1e-7)                                # (bsz * K, 1)
+
+        t = F.broadcast_to(t.reshape(-1, 1), (bsz, self.sample_num))        # (bsz, 1) -> (bsz, K)
+        rand_ts = F.transpose(rand_ts)
+        t, rand_ts = map(lambda x: x.data.astype('f'), (t, rand_ts))
+        p_real = 1 - self.xp.sign(self.xp.absolute(t - rand_ts)) + 1e-7     # (bsz, K)
+        p_real = p_real.reshape(-1, 1)                                      # (bsz * K, 1)
+        reward = (F.log(rand_probs / p_real) + 1).data                      # (bsz * K, 1)
+
+        loss = F.sum(reward * log_probs) / self.sample_num
+
+        self.g.cleargrads()
+        self.emb.cleargrads()
+        loss.backward()
+        self.opt_g.update()
+        self.opt_e.update()
+
+        chainer.report({'loss_g': loss, 'target': F.sum(reward) / self.sample_num})
+
+    def batch_multinomial(self, batch_probs, size):
+        """
+        Sample the multinomial distributions given a batch of probabilities
+        :param batch_probs: has shape (batch_size, V), a batch of probabilities
+        :param size: int, the number of examples to sample every distribution
+        :return: has shape (batch_size, size)
+        """
+        log_probs = F.log(batch_probs)                                      # (bsz, V)
+        nums = self.xp.empty((size, log_probs.shape[0])).astype('int32')    # (K, bsz)
+        for i in xrange(size):
+            noise = self.xp.random.rand(*log_probs.shape).astype('f')   # bsz, V
+            rand = F.argmax(log_probs - F.log(-F.log(noise)), axis=1)
+            nums[i] = rand.data
+
+        # return F.transpose(nums)
+        return nums
+
+    def get_report_list(self):
+        return ['epoch', 'iteration', 'loss_g', 'target', 'elapsed_time']
 
