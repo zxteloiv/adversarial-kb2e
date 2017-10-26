@@ -51,35 +51,35 @@ def main():
     #         d.to_gpu(config.DEVICE)
     # scorer = GAN_Scorer(gen, d, xp)
 
-    # MLE Scorer
-    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
-    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
-    embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    chainer.serializers.load_npz(args.models[0], generator)
-    chainer.serializers.load_npz(args.models[1], embeddings)
-    if config.DEVICE >= 0:
-        chainer.cuda.get_device_from_id(config.DEVICE).use()
-        generator.to_gpu(config.DEVICE)
-        embeddings.to_gpu(config.DEVICE)
-    scorer = MLEGen_Scorer(generator, embeddings, xp)
-
-    # # Experimental tesing
+    # # MLE Scorer
     # ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
     # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
     # embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    # discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
     # chainer.serializers.load_npz(args.models[0], generator)
-    # chainer.serializers.load_npz(args.models[1], discriminator)
-    # chainer.serializers.load_npz(args.models[2], embeddings)
-    #
+    # chainer.serializers.load_npz(args.models[1], embeddings)
     # if config.DEVICE >= 0:
     #     chainer.cuda.get_device_from_id(config.DEVICE).use()
     #     generator.to_gpu(config.DEVICE)
-    #     discriminator.to_gpu(config.DEVICE)
     #     embeddings.to_gpu(config.DEVICE)
-    #
-    # print args.models[0], args.models[1], args.models[2]
-    # scorer = Experimental_Scorer(generator, discriminator, embeddings, xp)
+    # scorer = MLEGen_Scorer(generator, embeddings, xp)
+
+    # Experimental tesing
+    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
+    embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
+    chainer.serializers.load_npz(args.models[0], generator)
+    chainer.serializers.load_npz(args.models[1], discriminator)
+    chainer.serializers.load_npz(args.models[2], embeddings)
+
+    if config.DEVICE >= 0:
+        chainer.cuda.get_device_from_id(config.DEVICE).use()
+        generator.to_gpu(config.DEVICE)
+        discriminator.to_gpu(config.DEVICE)
+        embeddings.to_gpu(config.DEVICE)
+
+    print args.models[0], args.models[1], args.models[2]
+    scorer = Experimental_Scorer(generator, discriminator, embeddings, xp)
 
     run_ranking_test(scorer, vocab_ent, test_data)
 
@@ -178,11 +178,11 @@ class Experimental_Scorer(object):
     def __call__(self, h, r):
         h_raw = self.e.ent(h).reshape(h.shape[0], -1)   # (1, emb_sz)
         r_raw = self.e.rel(r).reshape(r.shape[0], -1)   # (1, emb_sz)
-        d_value = self.get_d_score(h_raw, r_raw)
-        # g_value = self.get_g_score(h_raw, r_raw)
+        # d_value = self.get_d_score(h_raw, r_raw)
+        g_value = self.get_g_score(h_raw, r_raw)
         # value = - d_value - g_value
-        # value = -g_value
-        value = -d_value
+        value = -g_value
+        # value = -d_value
         s = chainer.cuda.to_cpu(value.data)
         return s
 

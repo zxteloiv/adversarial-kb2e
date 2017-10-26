@@ -11,12 +11,12 @@ USE_TINY_CORPUS_NUM = -1  #1000
 
 # training framework conf
 BATCH_SZ = 1000
-OPT_D_EPOCH = 5  # how many epochs are needed for training a discriminator in one iteration
+OPT_D_EPOCH = 1  # how many epochs are needed for training a discriminator in one iteration
 OPT_G_EPOCH = 1  # how many epochs are needed for training a generator in one iteration
 SGD_LR = 0.01  # learning rate for SGD only
 ADAM_ALPHA = 1e-3
 ADAM_BETA1 = 0.5
-SAMPLE_NUM = 100
+SAMPLE_NUM = 700
 
 SAVE_ITER_INTERVAL = 200
 TRAINING_LIMIT = (5000, 'iteration')

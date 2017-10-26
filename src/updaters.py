@@ -346,15 +346,15 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
         r_emb = F.broadcast_to(r_raw, (self.sample_num, ) + r_raw.shape)    # (K, bsz, emb_sz)
         r_emb = r_emb.reshape(self.sample_num * bsz, -1)                    # (K * bsz, emb_sz)
 
-        reward = -F.sigmoid(self.d(F.concat([h_emb, r_emb, rand_ts_emb])))  # (K * bsz, 1)
+        reward = F.log(1 - F.sigmoid(self.d(F.concat([h_emb, r_emb, rand_ts_emb]))) + 1e-7)   # (K * bsz, 1)
 
         list_probs = []                                                     # [(bsz, 1)], len=K
         for r in xrange(len(rand_ts)):
             rand_probs = F.select_item(probs, rand_ts[r].reshape(-1))       # (bsz,)
             rand_probs = F.expand_dims(rand_probs, 1)                       # (bsz, 1)
             list_probs.append(rand_probs)
-        rand_probs = F.hstack(list_probs).reshape(-1, 1)                    # (bsz, K) -> (bsz * K, 1)
-        log_rand_probs = F.log(rand_probs + 1e-7)                           # (bsz * K, 1)
+        rand_probs = F.transpose(F.hstack(list_probs)).reshape(-1, 1)       # (bsz, K) -> (K, bsz) -> (K * bsz, 1)
+        log_rand_probs = F.log(rand_probs + 1e-7)                           # (K * bsz, 1)
 
         loss_g = F.sum(log_rand_probs * reward) / self.sample_num
 
