@@ -424,6 +424,56 @@ class MLEGenUpdater(chainer.training.StandardUpdater):
         return ['epoch', 'iteration', 'loss_g', 'elapsed_time']
 
 
+class MLEGenAdvExampleUpdater(chainer.training.StandardUpdater):
+    def __init__(self, data_iter, opt_g, opt_e, opt_b, device, d_epoch, g_epoch, eps=0.01):
+        super(MLEGenAdvExampleUpdater, self).__init__(data_iter, opt_g, device=device)
+        self.opt_e = opt_e
+        self.opt_g = opt_g
+        self.opt_b = opt_b
+        self.g = opt_g.target
+        self.emb = opt_e.target
+        self.bias = opt_b.target
+        self.d_poch = d_epoch
+        self.g_epoch = g_epoch
+        self.eps = eps
+        self.xp = np
+        if self.device >= 0:
+            from chainer.cuda import cupy
+            self.xp = cupy
+
+    def update_core(self):
+        data_iter = self.get_iterator('main')
+        batch = data_iter.__next__()
+        h, r, t = self.converter(batch, self.device)
+        bsz = h.shape[0]
+        h_emb = self.emb.ent(h).reshape(bsz, -1)    # (bsz, emb_sz)
+        r_emb = self.emb.rel(r).reshape(bsz, -1)    # (bsz, emb_sz)
+        t = t.reshape(-1)                           # (bsz,) for cross_entropy loss function
+
+        for i in xrange(self.d_poch):
+            self.bias.b.data = self.eps * self.bias.b.data / (self.xp.linalg.norm(self.bias.b.data, axis=0) + 1e-9)
+            logits = self.g(self.bias(F.concat([h_emb, r_emb])))    # (bsz, V)
+            loss = -F.softmax_cross_entropy(logits, t.reshape(-1))
+            self.bias.cleargrads()
+            loss.backward()
+            self.opt_b.update()
+
+        for i in xrange(self.g_epoch):
+            logits = self.g(self.bias(F.concat([h_emb, r_emb])))    # (bsz, V)
+            loss = F.softmax_cross_entropy(logits, t.reshape(-1))   # (bsz, V)
+
+            self.g.cleargrads()
+            self.emb.cleargrads()
+            loss.backward()
+            self.get_optimizer('main').update()
+            self.opt_e.update()
+
+        chainer.report({'loss_g': loss})
+
+    def get_report_list(self):
+        return ['epoch', 'iteration', 'loss_g', 'elapsed_time']
+
+
 class RKLGenUpdater(chainer.training.StandardUpdater):
     """
     Reversed KL divergence

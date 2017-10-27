@@ -15,11 +15,11 @@ def main():
     args = parser.parse_args()
 
     vocab_ent, vocab_rel = mod_dataset.load_vocab()
-    logging.info('ent vocab size=%d, rel vocab size=%d' % (len(vocab_ent), len(vocab_rel)))
-    train_data, valid_data, test_data = map(lambda f: mod_dataset.load_corpus(f, vocab_ent, vocab_rel),
-                                            (config.TRAIN_DATA, config.VALID_DATA, config.TEST_DATA))
-    logging.info('data loaded, size: train:valid:test=%d:%d:%d' % (len(train_data), len(valid_data), len(test_data)))
     logging.getLogger().setLevel(logging.INFO)
+    logging.info('ent vocab size=%d, rel vocab size=%d' % (len(vocab_ent), len(vocab_rel)))
+    valid_data, test_data = map(lambda f: mod_dataset.load_corpus(f, vocab_ent, vocab_rel),
+                                (config.VALID_DATA, config.TEST_DATA))
+    logging.info('data loaded, size: train:valid:test=-:%d:%d' % (len(valid_data), len(test_data)))
 
     xp = np
     if config.DEVICE >= 0:
@@ -51,35 +51,35 @@ def main():
     #         d.to_gpu(config.DEVICE)
     # scorer = GAN_Scorer(gen, d, xp)
 
-    # # MLE Scorer
-    # ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
-    # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
-    # embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    # chainer.serializers.load_npz(args.models[0], generator)
-    # chainer.serializers.load_npz(args.models[1], embeddings)
-    # if config.DEVICE >= 0:
-    #     chainer.cuda.get_device_from_id(config.DEVICE).use()
-    #     generator.to_gpu(config.DEVICE)
-    #     embeddings.to_gpu(config.DEVICE)
-    # scorer = MLEGen_Scorer(generator, embeddings, xp)
-
-    # Experimental tesing
+    # MLE Scorer
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
     generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
     embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
     chainer.serializers.load_npz(args.models[0], generator)
-    chainer.serializers.load_npz(args.models[1], discriminator)
-    chainer.serializers.load_npz(args.models[2], embeddings)
-
+    chainer.serializers.load_npz(args.models[1], embeddings)
     if config.DEVICE >= 0:
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         generator.to_gpu(config.DEVICE)
-        discriminator.to_gpu(config.DEVICE)
         embeddings.to_gpu(config.DEVICE)
+    scorer = MLEGen_Scorer(generator, embeddings, xp)
 
-    print args.models[0], args.models[1], args.models[2]
-    scorer = Experimental_Scorer(generator, discriminator, embeddings, xp)
+    # # Experimental tesing
+    # ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+    # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
+    # embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    # discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
+    # chainer.serializers.load_npz(args.models[0], generator)
+    # chainer.serializers.load_npz(args.models[1], discriminator)
+    # chainer.serializers.load_npz(args.models[2], embeddings)
+    #
+    # if config.DEVICE >= 0:
+    #     chainer.cuda.get_device_from_id(config.DEVICE).use()
+    #     generator.to_gpu(config.DEVICE)
+    #     discriminator.to_gpu(config.DEVICE)
+    #     embeddings.to_gpu(config.DEVICE)
+    #
+    # print args.models[0], args.models[1], args.models[2]
+    # scorer = Experimental_Scorer(generator, discriminator, embeddings, xp)
 
     run_ranking_test(scorer, vocab_ent, test_data)
 
