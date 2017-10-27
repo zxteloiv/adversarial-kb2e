@@ -425,16 +425,12 @@ class MLEGenUpdater(chainer.training.StandardUpdater):
 
 
 class MLEGenAdvExampleUpdater(chainer.training.StandardUpdater):
-    def __init__(self, data_iter, opt_g, opt_e, opt_b, device, d_epoch, g_epoch, eps=0.01):
+    def __init__(self, data_iter, opt_g, opt_e, device, eps=0.01):
         super(MLEGenAdvExampleUpdater, self).__init__(data_iter, opt_g, device=device)
         self.opt_e = opt_e
         self.opt_g = opt_g
-        self.opt_b = opt_b
         self.g = opt_g.target
         self.emb = opt_e.target
-        self.bias = opt_b.target
-        self.d_poch = d_epoch
-        self.g_epoch = g_epoch
         self.eps = eps
         self.xp = np
         if self.device >= 0:
@@ -450,23 +446,27 @@ class MLEGenAdvExampleUpdater(chainer.training.StandardUpdater):
         r_emb = self.emb.rel(r).reshape(bsz, -1)    # (bsz, emb_sz)
         t = t.reshape(-1)                           # (bsz,) for cross_entropy loss function
 
-        for i in xrange(self.d_poch):
-            self.bias.b.data = self.eps * self.bias.b.data / (self.xp.linalg.norm(self.bias.b.data, axis=0) + 1e-9)
-            logits = self.g(self.bias(F.concat([h_emb, r_emb])))    # (bsz, V)
-            loss = -F.softmax_cross_entropy(logits, t.reshape(-1))
-            self.bias.cleargrads()
-            loss.backward()
-            self.opt_b.update()
+        # compute the adversarial perturbation, that maximizes the cross entropy
+        logits = self.g(F.concat([h_emb, r_emb]))   # (bsz, V)
+        loss = -F.softmax_cross_entropy(logits, t.reshape(-1))
+        self.emb.cleargrads()
+        loss.backward()
 
-        for i in xrange(self.g_epoch):
-            logits = self.g(self.bias(F.concat([h_emb, r_emb])))    # (bsz, V)
-            loss = F.softmax_cross_entropy(logits, t.reshape(-1))   # (bsz, V)
+        ent_grad = self.emb.ent.W.grad
+        rel_grad = self.emb.rel.W.grad
+        ent_grad, rel_grad = map(models.HingeLossGen.normalize_embedding, (ent_grad, rel_grad))
+        h_bias = F.embed_id(h, ent_grad).reshape(bsz, -1) * self.eps
+        r_bias = F.embed_id(r, rel_grad).reshape(bsz, -1) * self.eps
 
-            self.g.cleargrads()
-            self.emb.cleargrads()
-            loss.backward()
-            self.get_optimizer('main').update()
-            self.opt_e.update()
+        # compute the true loss and prop backward
+        logits = self.g(F.concat([h_emb + h_bias, r_emb + r_bias]))     # (bsz, V)
+        loss = F.softmax_cross_entropy(logits, t.reshape(-1))           # (bsz, V)
+
+        self.g.cleargrads()
+        self.emb.cleargrads()
+        loss.backward()
+        self.get_optimizer('main').update()
+        self.opt_e.update()
 
         chainer.report({'loss_g': loss})
 

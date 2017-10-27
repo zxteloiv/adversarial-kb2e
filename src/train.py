@@ -129,7 +129,6 @@ def MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
     generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
     embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    adv_bias = chainer.links.Bias(shape=(config.EMBED_SZ * 2,))
     if len(sys.argv) > 1:
         chainer.serializers.load_npz(sys.argv[1], generator)
     if len(sys.argv) > 2:
@@ -139,20 +138,15 @@ def MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         generator.to_gpu(config.DEVICE)
         embeddings.to_gpu(config.DEVICE)
-        adv_bias.to_gpu(config.DEVICE)
 
     opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt_e = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt_g.setup(generator)
     opt_e.setup(embeddings)
 
-    # updater = updaters.MLEGenUpdater(train_iter, opt_g, opt_e, config.DEVICE)
+    updater = updaters.MLEGenUpdater(train_iter, opt_g, opt_e, config.DEVICE)
     # updater = updaters.RKLGenUpdater(train_iter, opt_g, opt_e, config.DEVICE, config.SAMPLE_NUM)
-
-    opt_b = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
-    opt_b.setup(adv_bias)
-    updater = updaters.MLEGenAdvExampleUpdater(train_iter, opt_g, opt_e, opt_b, config.DEVICE,
-                                               config.OPT_D_EPOCH, config.OPT_G_EPOCH)
+    # updater = updaters.MLEGenAdvExampleUpdater(train_iter, opt_g, opt_e, config.DEVICE, config.ADV_PERTUB)
 
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))

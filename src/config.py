@@ -18,17 +18,19 @@ ADAM_ALPHA = 1e-3
 ADAM_BETA1 = 0.5
 SAMPLE_NUM = 700
 
-SAVE_ITER_INTERVAL = 200
+SAVE_ITER_INTERVAL = 1000
 TRAINING_LIMIT = (5000, 'iteration')
 # TRAINING_LIMIT = (5000, 'epoch')
 
 # model conf
-EMBED_SZ = 50
+EMBED_SZ = 100
 PENALTY_COEFF = 1
 TRANSE_GAMMA = 0.6
 TRANSE_NORM = 2  # L1 norm =1, L2 norm =2
 WEIGHT_DECAY = 1e-5
 HINGE_LOSS_WEIGHT = 1
+
+ADV_PERTUB = 0.
 
 # =============================================================================
 # auto computation for data, configurations listed below are generally forbidden
