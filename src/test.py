@@ -37,31 +37,34 @@ def main():
     # chainer.serializers.load_npz(args.models[0], gen)
     # scorer = HingeGen_Scorer(gen, xp)
 
-    # # GAN testing
-    # gen = models.Generator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
-    # chainer.serializers.load_npz(args.models[0], gen)
-    # d = None
-    # if len(args.models) > 1:
-    #     d = models.Discriminator(config.EMBED_SZ)
-    #     chainer.serializers.load_npz(args.models[1], d)
-    #
-    # if config.DEVICE >= 0:
-    #     gen.to_gpu(config.DEVICE)
-    #     if d is not None:
-    #         d.to_gpu(config.DEVICE)
-    # scorer = GAN_Scorer(gen, d, xp)
-
-    # MLE Scorer
+    # GAN testing
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
     generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
-    embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
+    g_embedding = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    d_embedding = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
     chainer.serializers.load_npz(args.models[0], generator)
-    chainer.serializers.load_npz(args.models[1], embeddings)
+    chainer.serializers.load_npz(args.models[1], discriminator)
+    chainer.serializers.load_npz(args.models[2], g_embedding)
+    chainer.serializers.load_npz(args.models[3], d_embedding)
     if config.DEVICE >= 0:
-        chainer.cuda.get_device_from_id(config.DEVICE).use()
         generator.to_gpu(config.DEVICE)
-        embeddings.to_gpu(config.DEVICE)
-    scorer = MLEGen_Scorer(generator, embeddings, xp)
+        discriminator.to_gpu(config.DEVICE)
+        g_embedding.to_gpu(config.DEVICE)
+        d_embedding.to_gpu(config.DEVICE)
+    scorer = GAN_Scorer(generator, discriminator, g_embedding, d_embedding, xp)
+
+    # # MLE Scorer
+    # ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+    # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
+    # embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    # chainer.serializers.load_npz(args.models[0], generator)
+    # chainer.serializers.load_npz(args.models[1], embeddings)
+    # if config.DEVICE >= 0:
+    #     chainer.cuda.get_device_from_id(config.DEVICE).use()
+    #     generator.to_gpu(config.DEVICE)
+    #     embeddings.to_gpu(config.DEVICE)
+    # scorer = MLEGen_Scorer(generator, embeddings, xp)
 
     # # Experimental tesing
     # ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
@@ -118,31 +121,41 @@ class HingeGen_Scorer(object):
 
 
 class GAN_Scorer(object):
-    def __init__(self, g, d, xp):
+    def __init__(self, g, d, eg, ed, xp):
         self.g = g if config.DEVICE < 0 else g.to_gpu(config.DEVICE)
-        self.d = d if config.DEVICE < 0 or d is None else d.to_gpu(config.DEVICE)
+        self.d = d if config.DEVICE < 0 else d.to_gpu(config.DEVICE)
+        self.eg = eg if config.DEVICE < 0 else eg.to_gpu(config.DEVICE)
+        self.ed = ed if config.DEVICE < 0 else ed.to_gpu(config.DEVICE)
         self.xp = xp
 
     def set_candidate_t(self, candidate_t):
         self.bsz = candidate_t.shape[0]
-        self.ct_emb = self.g.embed_entity(candidate_t)
+        self.ct_g_emb = self.eg.ent(candidate_t)
+        self.ct_d_emb = self.ed.ent(candidate_t)
 
     def __call__(self, h, r):
-        return self.get_g_score(h, r)
-        # return self.get_d_score(h, r)
+        d_value = self.get_d_score(h, r)
+        g_value = self.get_g_score(h, r)
+        values = -d_value -g_value
+        # values = -d_value
+        # values = -g_value
+        scores = chainer.cuda.to_cpu(values)
+        return scores
 
     def get_d_score(self, h, r):
-        h_emb = F.stack([self.g.embed_entity(h)] * self.bsz).reshape(self.bsz, -1)
-        r_emb = F.stack([self.g.embed_relation(r)] * self.bsz).reshape(self.bsz, -1)
-        values = self.d(h_emb, r_emb, self.ct_emb).reshape(-1).data
-        scores = chainer.cuda.to_cpu(values)
-        return scores
+        h_emb = self.ed.ent(h).reshape(-1)
+        r_emb = self.ed.rel(r).reshape(-1)
+        h_emb = F.broadcast_to(h_emb, (self.bsz,) + h_emb.shape)
+        r_emb = F.broadcast_to(r_emb, (self.bsz,) + r_emb.shape)
+        values = self.d(F.concat((h_emb, r_emb, self.ct_d_emb))).reshape(-1).data
+        return values
 
     def get_g_score(self, h, r):
-        t_tilde = self.g(h, r)
-        values = self.xp.linalg.norm(t_tilde.data - self.ct_emb.data, axis=1)
-        scores = chainer.cuda.to_cpu(values)
-        return scores
+        h_emb = self.eg.ent(h).reshape(1, -1)
+        r_emb = self.eg.rel(r).reshape(1, -1)
+        t_logits = self.g(F.concat((h_emb, r_emb))).reshape(-1)
+        values = t_logits
+        return values.data
 
 
 class MLEGen_Scorer(object):

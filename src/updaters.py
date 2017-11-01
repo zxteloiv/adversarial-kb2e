@@ -105,184 +105,92 @@ class WGANUpdator(AbstractGANUpdator):
         return ['epoch', 'iteration', 'loss_g', 'w-distance', 'penalty', 'elapsed_time']
 
 
-class LSGANUpdater(AbstractGANUpdator):
-    def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, g_epoch=1, hinge_loss_weight=1, penalty_coeff=1):
-        super(LSGANUpdater, self).__init__(data_iter, opt_g, opt_d, device, d_epoch, g_epoch)
-        self.hinge_loss_weight = hinge_loss_weight
-        self.penalty_coeff = penalty_coeff
-
-    def update_d(self, h, r, t):
-        t_tilde = self.g(h, r)
-
-        # loss for real examples
-        h_emb, t_emb = map(self.g.embed_entity, (h, t))
-        r_emb = self.g.embed_relation(r)
-        loss_real = self.d(h_emb, r_emb, t_emb)
-
-        # hinge loss for generated loss and the distance margin
-        hinge_loss = F.relu(F.batch_l2_norm_squared(t_tilde - t_emb).reshape(-1, 1)
-                            + self.d(h_emb, r_emb, t_emb)
-                            - self.d(h_emb, r_emb, t_tilde))
-        hinge_loss *= self.hinge_loss_weight
-
-        # Lipschitz Regularization for discriminator
-        epsilon, delta = self.xp.random.uniform(0.0, 1.0, (h.shape[0], 1)), 1e-7
-        t_hat = epsilon * t_emb + (1 - epsilon) * t_tilde
-        t_hat_delta = t_hat + delta
-        delta_approx = F.sqrt(F.batch_l2_norm_squared(t_hat_delta - t_hat)).reshape(-1, 1)
-        derivative = (self.d(h_emb, r_emb, t_hat_delta) - self.d(h_emb, r_emb, t_hat)) / delta_approx + delta
-        penalty = ((F.sqrt(F.batch_l2_norm_squared(derivative)) - 1) ** 2) * self.penalty_coeff
-
-        loss_real = F.average(loss_real)
-        hinge_loss = F.average(hinge_loss)
-        loss_d_penalty = F.average(penalty)
-
-        loss_d = loss_real + hinge_loss + loss_d_penalty
-        self.d.cleargrads()
-        loss_d.backward()
-        self.get_optimizer('opt_d').update()
-        self.add_to_report(loss_d=loss_d, loss_real=loss_real, hinge_loss=hinge_loss, d_penalty=loss_d_penalty)
-
-    def update_g(self, h, r, t):
-        # generator loss given a fixed discriminator
-        h_emb = self.g.embed_entity(h)
-        r_emb = self.g.embed_relation(r)
-        t_tilde = self.g(h, r)
-        loss_gen = F.average(self.d(h_emb, r_emb, t_tilde))
-
-        # Lipschitz Regularization for generator
-        epsilon, delta = self.xp.random.uniform(0.0, 1.0, (h.shape[0], 1)), 1e-7
-        t_emb = self.g.embed_entity(t)
-        t_hat = epsilon * t_emb + (1 - epsilon) * t_tilde
-        t_hat_delta = t_hat + delta
-        delta_approx = F.sqrt(F.batch_l2_norm_squared(t_hat_delta - t_hat)).reshape(-1, 1)
-        derivative = (self.d(h_emb, r_emb, t_hat_delta) - self.d(h_emb, r_emb, t_hat)) / delta_approx + delta
-        penalty = ((F.sqrt(F.batch_l2_norm_squared(derivative)) - 1) ** 2) * self.penalty_coeff
-        loss_g_penalty = F.average(penalty)
-
-        loss_g = loss_gen + loss_g_penalty
-        self.g.cleargrads()
-        loss_g.backward()
-        self.get_optimizer('opt_g').update()
-        self.add_to_report(loss_g=loss_g, loss_gen=loss_gen, g_penalty=loss_g_penalty)
-
-    @staticmethod
-    def get_report_list():
-        return ['epoch', 'iteration', 'loss_g', 'loss_gen', 'g_penalty',
-                'loss_d', 'loss_real', 'hinge_loss', 'd_penalty',
-                'elapsed_time']
-
-
-class FixedDGANUpdater(AbstractGANUpdator):
-    """simple GAN but with fixed D, usually the D is a predefined and perfect classifier"""
-    def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, g_epoch=5):
-        super(FixedDGANUpdater, self).__init__(data_iter, opt_g, opt_d, device, d_epoch, g_epoch)
-
-    def update_d(self, *args):
-        pass
-
-    def update_g(self, h, r, t):
-        # self.g.ent_emb.W.data = models.HingeLossGen.normalize_embedding(self.g.ent_emb.W.data)
-        # self.g.rel_emb.W.data = models.HingeLossGen.normalize_embedding(self.g.rel_emb.W.data)
-
-        h_emb = self.g.embed_entity(h)
-        r_emb = self.g.embed_relation(r)
-        t_emb = self.g.embed_entity(t)
-        t_tilde = self.g(h, r)
-        loss_g = F.sqrt(F.batch_l2_norm_squared(self.d(h_emb, r_emb, t_tilde)))
-        loss_g = F.average(loss_g)
-
-        # loss_sim = F.sqrt(F.batch_l2_norm_squared(self.d(h_emb, r_emb, t_tilde) - self.d(h_emb, r_emb, t_emb)) + 1e-7)
-        # loss_sim = F.average(loss_sim)
-
-        loss_sim = F.sqrt(F.batch_l2_norm_squared(t_tilde - t_emb) + 1e-7)
-        loss_sim = F.average(loss_sim)
-
-        loss = loss_g + loss_sim
-        self.g.cleargrads()
-        loss.backward()
-        self.get_optimizer('opt_g').update()
-        self.add_to_report(loss_g=loss_g, loss_sim=loss_sim)
-
-    @staticmethod
-    def get_report_list():
-        return ['epoch', 'iteration', 'loss_g', 'loss_sim', 'elapsed_time']
-
-
 class GANUpdater(AbstractGANUpdator):
     """the most basic GAN"""
-    def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, g_epoch=5):
+    def __init__(self, data_iter, opt_g, opt_d, opt_eg, opt_ed, ent_num, device, d_epoch, g_epoch=5):
         super(GANUpdater, self).__init__(data_iter, opt_g, opt_d, device, d_epoch, g_epoch)
+        self.opt_eg = opt_eg
+        self.opt_ed = opt_ed
+        self.g_emb = opt_eg.target
+        self.d_emb = opt_ed.target
+        self.ent_num = ent_num
 
     def update_d(self, h, r, t):
-        h_emb, t_emb = map(self.g.embed_entity, (h, t))
-        r_emb = self.g.embed_relation(r)
-        t_tilde = self.g(h, r)
+        bsz = h.shape[0]
+        h_g_emb, t_g_emb = map(lambda x: self.g_emb.ent(x).reshape(bsz, -1), (h, t))
+        r_g_emb = self.g_emb.rel(r).reshape(bsz, -1)
+        h_d_emb, t_d_emb = map(lambda x: self.d_emb.ent(x).reshape(bsz, -1), (h, t))
+        r_d_emb = self.d_emb.rel(r).reshape(bsz, -1)
+
+        samples, _ = self.sample_g(h_g_emb, r_g_emb)
+        samples_emb = self.d_emb.ent(samples).reshape(bsz, -1)
 
         # traditional GAN
-        loss_real = -F.log(self.d(h_emb, r_emb, t_emb))
-        loss_gen = -F.log(1 - self.d(h_emb, r_emb, t_tilde) + 1e-7)
+        loss_real = -F.log(F.sigmoid(self.d(F.concat((h_d_emb, r_d_emb, t_d_emb)))) + 1e-9)
+        loss_gen = -F.log(1 - F.sigmoid(self.d(F.concat((h_d_emb, r_d_emb, samples_emb)))) + 1e-9)
         loss_real = F.sum(loss_real)
         loss_gen = F.sum(loss_gen)
         loss_d = loss_real + loss_gen
 
         self.d.cleargrads()
+        self.d_emb.cleargrads()
         loss_d.backward()
         self.get_optimizer('opt_d').update()
+        self.opt_ed.update()
         self.add_to_report(loss_d=loss_d, loss_real=loss_real, loss_gen=loss_gen)
 
     def update_g(self, h, r, t):
-        h_emb = self.g.embed_entity(h)
-        r_emb = self.g.embed_relation(r)
+        bsz = h.shape[0]
+        h_g_emb, t_g_emb = map(lambda x: self.g_emb.ent(x).reshape(bsz, -1), (h, t))
+        r_g_emb = self.g_emb.rel(r).reshape(bsz, -1)
+        h_d_emb, t_d_emb = map(lambda x: self.d_emb.ent(x).reshape(bsz, -1), (h, t))
+        r_d_emb = self.d_emb.rel(r).reshape(bsz, -1)
 
-        loss_g = F.log(1 - self.d(h_emb, r_emb, self.g(h, r)) + 1e-7)
+        samples, probs = self.sample_g(h_g_emb, r_g_emb)
+        sample_probs = F.select_item(probs, samples).reshape(bsz, 1)
+
+        samples_emb = self.d_emb.ent(samples)
+        reward = F.log(1 - F.sigmoid(self.d(F.concat((h_d_emb, r_d_emb, samples_emb)))) + 1e-9)
+
+        loss_g = reward * F.log(sample_probs + 1e-9)
         loss_g = F.sum(loss_g)
 
         self.g.cleargrads()
+        self.g_emb.cleargrads()
         loss_g.backward()
         self.get_optimizer('opt_g').update()
-        self.add_to_report(loss_g=loss_g)
+        self.opt_eg.update()
+        self.add_to_report(loss_g=loss_g, reward=F.sum(reward))
+
+    def sample_g(self, h_emb, r_emb):
+        bsz = h_emb.shape[0]
+        logits = self.g(F.concat((h_emb, r_emb)))
+        probs = F.softmax(logits, axis=1)
+        samples = self.batch_multinomial(probs, 1).reshape(bsz,)
+        return samples, probs
+
+    @staticmethod
+    def batch_multinomial(batch_probs, size):
+        """
+        Sample the multinomial distributions given a batch of probabilities
+        :param batch_probs: has shape (batch_size, V), a batch of probabilities
+        :param size: int, the number of examples to sample every distribution
+        :return: has shape (batch_size, size)
+        """
+        xp = chainer.cuda.get_array_module(batch_probs)
+        log_probs = F.log(batch_probs)                                      # (bsz, V)
+        nums = xp.empty((size, log_probs.shape[0])).astype('int32')    # (K, bsz)
+        for i in xrange(size):
+            noise = xp.random.rand(*log_probs.shape).astype('f')   # bsz, V
+            rand = F.argmax(log_probs - F.log(-F.log(noise)), axis=1)
+            nums[i] = rand.data
+
+        # return F.transpose(nums)
+        return nums
 
     @staticmethod
     def get_report_list():
-        return ['epoch', 'iteration', 'loss_g','loss_d', 'loss_real', 'loss_gen', 'elapsed_time']
-
-
-class LeastSquareGANUpdater(AbstractGANUpdator):
-    def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, g_epoch=5):
-        super(LeastSquareGANUpdater, self).__init__(data_iter, opt_g, opt_d, device, d_epoch, g_epoch)
-
-    def update_d(self, h, r, t):
-        h_emb, t_emb = map(self.g.embed_entity, (h, t))
-        r_emb = self.g.embed_relation(r)
-        t_tilde = self.g(h, r)
-
-        loss_real = F.batch_l2_norm_squared(self.d(h_emb, r_emb, t_emb) - 1) / 2
-        loss_gen = F.batch_l2_norm_squared(self.d(h_emb, r_emb, t_tilde)) / 2
-        loss_real = F.sum(loss_real)
-        loss_gen = F.sum(loss_gen)
-        loss_d = loss_real + loss_gen
-
-        self.d.cleargrads()
-        loss_d.backward()
-        self.get_optimizer('opt_d').update()
-        self.add_to_report(loss_d=loss_d, loss_real=loss_real, loss_gen=loss_gen)
-
-    def update_g(self, h, r, t):
-        h_emb = self.g.embed_entity(h)
-        r_emb = self.g.embed_relation(r)
-
-        loss_g = F.batch_l2_norm_squared(self.d(h_emb, r_emb, self.g(h, r)) - 1) / 2
-        loss_g = F.sum(loss_g)
-
-        self.g.cleargrads()
-        loss_g.backward()
-        self.get_optimizer('opt_g').update()
-        self.add_to_report(loss_g=loss_g)
-
-    @staticmethod
-    def get_report_list():
-        return ['epoch', 'iteration', 'loss_g','loss_d', 'loss_real', 'loss_gen', 'elapsed_time']
+        return ['epoch', 'iteration', 'loss_g', 'reward', 'loss_d', 'loss_real', 'loss_gen', 'elapsed_time']
 
 
 class ExperimentalGANUpdater(AbstractGANUpdator):
@@ -424,56 +332,6 @@ class MLEGenUpdater(chainer.training.StandardUpdater):
         return ['epoch', 'iteration', 'loss_g', 'elapsed_time']
 
 
-class MLEGenAdvExampleUpdater(chainer.training.StandardUpdater):
-    def __init__(self, data_iter, opt_g, opt_e, device, eps=0.01):
-        super(MLEGenAdvExampleUpdater, self).__init__(data_iter, opt_g, device=device)
-        self.opt_e = opt_e
-        self.opt_g = opt_g
-        self.g = opt_g.target
-        self.emb = opt_e.target
-        self.eps = eps
-        self.xp = np
-        if self.device >= 0:
-            from chainer.cuda import cupy
-            self.xp = cupy
-
-    def update_core(self):
-        data_iter = self.get_iterator('main')
-        batch = data_iter.__next__()
-        h, r, t = self.converter(batch, self.device)
-        bsz = h.shape[0]
-        h_emb = self.emb.ent(h).reshape(bsz, -1)    # (bsz, emb_sz)
-        r_emb = self.emb.rel(r).reshape(bsz, -1)    # (bsz, emb_sz)
-        t = t.reshape(-1)                           # (bsz,) for cross_entropy loss function
-
-        # compute the adversarial perturbation, that maximizes the cross entropy
-        logits = self.g(F.concat([h_emb, r_emb]))   # (bsz, V)
-        loss = -F.softmax_cross_entropy(logits, t.reshape(-1))
-        self.emb.cleargrads()
-        loss.backward()
-
-        ent_grad = self.emb.ent.W.grad
-        rel_grad = self.emb.rel.W.grad
-        ent_grad, rel_grad = map(models.HingeLossGen.normalize_embedding, (ent_grad, rel_grad))
-        h_bias = F.embed_id(h, ent_grad).reshape(bsz, -1) * self.eps
-        r_bias = F.embed_id(r, rel_grad).reshape(bsz, -1) * self.eps
-
-        # compute the true loss and prop backward
-        logits = self.g(F.concat([h_emb + h_bias, r_emb + r_bias]))     # (bsz, V)
-        loss = F.softmax_cross_entropy(logits, t.reshape(-1))           # (bsz, V)
-
-        self.g.cleargrads()
-        self.emb.cleargrads()
-        loss.backward()
-        self.get_optimizer('main').update()
-        self.opt_e.update()
-
-        chainer.report({'loss_g': loss})
-
-    def get_report_list(self):
-        return ['epoch', 'iteration', 'loss_g', 'elapsed_time']
-
-
 class RKLGenUpdater(chainer.training.StandardUpdater):
     """
     Reversed KL divergence
@@ -551,4 +409,56 @@ class RKLGenUpdater(chainer.training.StandardUpdater):
 
     def get_report_list(self):
         return ['epoch', 'iteration', 'loss_g', 'target', 'elapsed_time']
+
+
+class TripleGANUpdater(chainer.training.StandardUpdater):
+    def __init__(self, data_iter, opt_g, opt_e, device, eps=0.01):
+        super(TripleGANUpdater, self).__init__(data_iter, opt_g, device=device)
+        self.opt_e = opt_e
+        self.opt_g = opt_g
+        self.g = opt_g.target
+        self.emb = opt_e.target
+        self.eps = eps
+        self.xp = np
+        if self.device >= 0:
+            from chainer.cuda import cupy
+            self.xp = cupy
+
+    def update_core(self):
+        data_iter = self.get_iterator('main')
+        batch = data_iter.__next__()
+        h, r, t = self.converter(batch, self.device)
+        bsz = h.shape[0]
+        h_emb = self.emb.ent(h).reshape(bsz, -1)    # (bsz, emb_sz)
+        r_emb = self.emb.rel(r).reshape(bsz, -1)    # (bsz, emb_sz)
+        t = t.reshape(-1)                           # (bsz,) for cross_entropy loss function
+
+        # compute the adversarial perturbation, that maximizes the cross entropy
+        logits = self.g(F.concat([h_emb, r_emb]))   # (bsz, V)
+        loss = -F.softmax_cross_entropy(logits, t.reshape(-1))
+        self.emb.cleargrads()
+        loss.backward()
+
+        ent_grad = self.emb.ent.W.grad
+        rel_grad = self.emb.rel.W.grad
+        ent_grad, rel_grad = map(models.HingeLossGen.normalize_embedding, (ent_grad, rel_grad))
+        h_bias = F.embed_id(h, ent_grad).reshape(bsz, -1) * self.eps
+        r_bias = F.embed_id(r, rel_grad).reshape(bsz, -1) * self.eps
+
+        # compute the true loss and prop backward
+        logits = self.g(F.concat([h_emb + h_bias, r_emb + r_bias]))     # (bsz, V)
+        loss = F.softmax_cross_entropy(logits, t.reshape(-1))           # (bsz, V)
+
+        self.g.cleargrads()
+        self.emb.cleargrads()
+        loss.backward()
+        self.get_optimizer('main').update()
+        self.opt_e.update()
+
+        chainer.report({'loss_g': loss})
+
+    def get_report_list(self):
+        return ['epoch', 'iteration', 'loss_g', 'elapsed_time']
+
+
 
