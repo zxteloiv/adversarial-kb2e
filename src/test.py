@@ -37,34 +37,34 @@ def main():
     # chainer.serializers.load_npz(args.models[0], gen)
     # scorer = HingeGen_Scorer(gen, xp)
 
-    # GAN testing
-    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
-    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
-    discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
-    g_embedding = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    d_embedding = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    chainer.serializers.load_npz(args.models[0], generator)
-    chainer.serializers.load_npz(args.models[1], discriminator)
-    chainer.serializers.load_npz(args.models[2], g_embedding)
-    chainer.serializers.load_npz(args.models[3], d_embedding)
-    if config.DEVICE >= 0:
-        generator.to_gpu(config.DEVICE)
-        discriminator.to_gpu(config.DEVICE)
-        g_embedding.to_gpu(config.DEVICE)
-        d_embedding.to_gpu(config.DEVICE)
-    scorer = GAN_Scorer(generator, discriminator, g_embedding, d_embedding, xp)
-
-    # # MLE Scorer
+    # # GAN testing
     # ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
     # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
-    # embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    # discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
+    # g_embedding = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    # d_embedding = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
     # chainer.serializers.load_npz(args.models[0], generator)
-    # chainer.serializers.load_npz(args.models[1], embeddings)
+    # chainer.serializers.load_npz(args.models[1], discriminator)
+    # chainer.serializers.load_npz(args.models[2], g_embedding)
+    # chainer.serializers.load_npz(args.models[3], d_embedding)
     # if config.DEVICE >= 0:
-    #     chainer.cuda.get_device_from_id(config.DEVICE).use()
     #     generator.to_gpu(config.DEVICE)
-    #     embeddings.to_gpu(config.DEVICE)
-    # scorer = MLEGen_Scorer(generator, embeddings, xp)
+    #     discriminator.to_gpu(config.DEVICE)
+    #     g_embedding.to_gpu(config.DEVICE)
+    #     d_embedding.to_gpu(config.DEVICE)
+    # scorer = GAN_Scorer(generator, discriminator, g_embedding, d_embedding, xp)
+
+    # MLE Scorer
+    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
+    embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    chainer.serializers.load_npz(args.models[0], generator)
+    chainer.serializers.load_npz(args.models[1], embeddings)
+    if config.DEVICE >= 0:
+        chainer.cuda.get_device_from_id(config.DEVICE).use()
+        generator.to_gpu(config.DEVICE)
+        embeddings.to_gpu(config.DEVICE)
+    scorer = MLEGen_Scorer(generator, embeddings, xp)
 
     # # Experimental tesing
     # ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1

@@ -17,9 +17,9 @@ def main():
     # trainer = TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = GAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    # trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    # trainer = MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    trainer = MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     trainer.run()
 
 
@@ -157,7 +157,7 @@ def MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     opt_g.setup(generator)
     opt_e.setup(embeddings)
 
-    updater = updaters.MLEGenUpdater(train_iter, opt_g, opt_e, config.DEVICE)
+    updater = updaters.MLEGenUpdater(train_iter, opt_g, opt_e, ent_num, config.TRANSE_GAMMA, config.DEVICE)
     # updater = updaters.RKLGenUpdater(train_iter, opt_g, opt_e, config.DEVICE, config.SAMPLE_NUM)
 
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
