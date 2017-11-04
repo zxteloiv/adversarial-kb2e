@@ -339,7 +339,7 @@ class MLEGenUpdater(chainer.training.StandardUpdater):
         neg_entropy = -F.select_item(log_probs, neg_t)
         margin = self.margin * xp.absolute(xp.sign((t - neg_t).data))
 
-        loss = F.average(F.relu(pos_entropy - neg_entropy + margin))
+        loss = F.average(pos_entropy - neg_entropy + margin)
 
         self.g.cleargrads()
         self.emb.cleargrads()
