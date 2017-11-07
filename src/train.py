@@ -140,7 +140,7 @@ def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
 
 def MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
-    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
+    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
     embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
     if len(sys.argv) > 1:
         chainer.serializers.load_npz(sys.argv[1], generator)
@@ -157,7 +157,7 @@ def MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     opt_g.setup(generator)
     opt_e.setup(embeddings)
 
-    updater = updaters.MLEGenUpdater(train_iter, opt_g, opt_e, ent_num, config.TRANSE_GAMMA, config.DEVICE)
+    updater = updaters.MLEGenUpdater(train_iter, opt_g, opt_e, ent_num, config.DEVICE)
     # updater = updaters.RKLGenUpdater(train_iter, opt_g, opt_e, config.DEVICE, config.SAMPLE_NUM)
 
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())

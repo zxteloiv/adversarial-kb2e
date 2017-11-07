@@ -30,6 +30,8 @@ TRANSE_NORM = 2  # L1 norm =1, L2 norm =2
 WEIGHT_DECAY = 1e-5
 HINGE_LOSS_WEIGHT = 1
 
+DROPOUT = 0.2
+
 ADV_PERTUB = 0.
 
 # =============================================================================

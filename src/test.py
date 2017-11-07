@@ -14,6 +14,8 @@ def main():
     parser.add_argument('models', nargs='+')
     args = parser.parse_args()
 
+    chainer.config.train = False
+
     vocab_ent, vocab_rel = mod_dataset.load_vocab()
     logging.getLogger().setLevel(logging.INFO)
     logging.info('ent vocab size=%d, rel vocab size=%d' % (len(vocab_ent), len(vocab_rel)))

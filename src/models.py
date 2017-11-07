@@ -25,16 +25,21 @@ class MLP(chainer.Chain):
 
 
 class VarMLP(chainer.ChainList):
-    def __init__(self, layer_dims):
+    def __init__(self, layer_dims, dropout=0.9):
         super(VarMLP, self).__init__()
-        for i in xrange(len(layer_dims) -1):
+        for i in xrange(len(layer_dims) - 1):
             l = L.Linear(layer_dims[i], layer_dims[i+1])
             self.add_link(l)
+        self.dropout = dropout
 
     def __call__(self, x):
         hidden = x
         for i, link in enumerate(self.children()):
-            hidden = F.tanh(link(hidden)) if i < len(self) - 1 else link(hidden)
+            if i < len(self) - 1:
+                hidden = F.tanh(link(hidden))
+                hidden = F.dropout(hidden, ratio=self.dropout)
+            else:
+                hidden = link(hidden)
         return hidden
 
 

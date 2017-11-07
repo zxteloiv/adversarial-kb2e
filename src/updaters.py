@@ -309,14 +309,13 @@ class ExperimentalGANUpdater(AbstractGANUpdator):
 
 
 class MLEGenUpdater(chainer.training.StandardUpdater):
-    def __init__(self, data_iter, opt_g, opt_e, ent_num, margin, device):
+    def __init__(self, data_iter, opt_g, opt_e, ent_num, device=-1):
         super(MLEGenUpdater, self).__init__(data_iter, opt_g, device=device)
         self.opt_e = opt_e
         self.opt_g = opt_g
         self.g = opt_g.target
         self.emb = opt_e.target
         self.ent_num = ent_num
-        self.margin = margin
 
     def update_core(self):
         data_iter = self.get_iterator('main')
@@ -328,18 +327,7 @@ class MLEGenUpdater(chainer.training.StandardUpdater):
         r_emb = self.emb.rel(r).reshape(bsz, -1)    # (bsz, emb_sz)
         logits = self.g(F.concat([h_emb, r_emb]))   # (bsz, V)
 
-        # loss = F.softmax_cross_entropy(logits, t.reshape(-1))   # (bsz, V)
-        probs = F.softmax(logits, axis=1)
-        log_probs = F.log(probs + 1e-12)            # (bsz, V)
-
-        t = t.reshape(-1)
-        neg_t = chainer.Variable(xp.random.randint(0, self.ent_num, size=t.shape))
-
-        pos_entropy = -F.select_item(log_probs, t)
-        neg_entropy = -F.select_item(log_probs, neg_t)
-        margin = self.margin * xp.absolute(xp.sign((t - neg_t).data))
-
-        loss = F.average(pos_entropy - neg_entropy + margin)
+        loss = F.softmax_cross_entropy(logits, t.reshape(-1))   # (bsz, V)
 
         self.g.cleargrads()
         self.emb.cleargrads()
