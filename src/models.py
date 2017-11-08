@@ -7,6 +7,7 @@ import chainer.links as L
 import numpy as np
 import math
 
+
 class MLP(chainer.Chain):
     def __init__(self, in_dim, out_dim):
         super(MLP, self).__init__(
@@ -51,79 +52,70 @@ class Embeddings(chainer.Chain):
         )
 
 
+class AdaptiveHighwayLayer(chainer.Chain):
+    def __init__(self, in_dim, out_dim):
+        super(AdaptiveHighwayLayer, self).__init__()
+        with self.init_scope():
+            self.affine_link = L.Linear(in_dim, out_dim)
+            self.trans_gate_link = L.Linear(in_dim, out_dim, initial_bias=-np.ones((out_dim,)).astype('i'))
+
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+
+    def __call__(self, x):
+        hidden = F.tanh(self.affine_link(x))
+        if self.in_dim == self.out_dim:
+            gate = F.sigmoid(self.trans_gate_link(x))
+            out = hidden * gate + x * (1 - gate)
+        else:
+            out = hidden
+
+        return out
+
+
+class HighwayNetwork(chainer.ChainList):
+    def __init__(self, layer_dims, dropout=0.0):
+        super(HighwayNetwork, self).__init__()
+        for i in xrange(len(layer_dims) - 2):
+            link = AdaptiveHighwayLayer(layer_dims[i], layer_dims[i+1])
+            self.add_link(link)
+
+        # the last layer must be a simple linear mapping without activation
+        last_link = L.Linear(layer_dims[-2], layer_dims[-1])
+        self.add_link(last_link)
+
+        self.dropout = dropout
+
+    def __call__(self, x):
+        hidden = x
+        for i, link in enumerate(self.children()):
+            if i < len(self) - 1:
+                hidden = link(hidden)
+                hidden = F.dropout(hidden, ratio=self.dropout)
+            else:
+                hidden = link(hidden)
+        return hidden
+
+
 class Generator(chainer.Chain):
-    def __init__(self, in_dim, ent_num, rel_num):
-        super(Generator, self).__init__(
-            ent_emb=L.EmbedID(ent_num, in_dim),
-            rel_emb=L.EmbedID(rel_num, in_dim),
-            mlp=VarMLP([in_dim * 2, in_dim, in_dim])
-        )
+    def __init__(self, in_dim, ent_num, rel_num, dropout=0.2):
+        # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
+        super(Generator, self).__init__()
+        with self.init_scope():
+            self.l1 = L.Linear(in_dim * 2, in_dim)
+            self.l2 = L.Linear(in_dim, in_dim)
+            self.l3 = L.Linear(in_dim, in_dim)
 
         self.ent_num = ent_num
         self.rel_num = rel_num
+        self.dropout = dropout
 
-    def __call__(self, *args, **kwargs):
-        h, r = args
-        h_emb = self.ent_emb(h).reshape(h.shape[0], -1)
-        r_emb = self.rel_emb(r).reshape(h.shape[0], -1)
-        x = F.concat((h_emb, r_emb))
-        x = self.mlp(x)
-        return x
-
-    def embed_entity(self, e):
-        return self.ent_emb(e).reshape(e.shape[0], -1)
-
-    def embed_relation(self, r):
-        return self.rel_emb(r).reshape(r.shape[0], -1)
-
-    @staticmethod
-    def create_generator(emb_sz, vocab_ent, vocab_rel):
-        # embedding link starts from 0, but token id starts from 1,
-        # thus make a spare embedding for dummy id 0
-        g = Generator(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1)
-        return g
-
-
-class PretrainedGenerator(Generator):
-    def __init__(self, in_dim, ent_num, rel_num):
-        super(PretrainedGenerator, self).__init__(in_dim, ent_num, rel_num)
-
-    def __call__(self, *args, **kwargs):
-        h, r, t = args
-        self.ent_emb.W.data = HingeLossGen.normalize_embedding(self.ent_emb.W.data)
-
-        xp = chainer.cuda.get_array_module(h)
-        bsz = h.shape[0]
-        h = self.ent_emb(h).reshape(bsz, -1)
-        r = self.rel_emb(r).reshape(bsz, -1)
-        t = self.ent_emb(t).reshape(bsz, -1)
-
-        half = bsz / 2
-        h_corrupted = xp.random.randint(1, self.ent_num + 1, size=(half, 1))
-        t_corrupted = xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1))
-        h_corrupted = self.ent_emb(h_corrupted).reshape(half, -1)
-        t_corrupted = self.ent_emb(t_corrupted).reshape(bsz - half, -1)
-
-        t_tilde = self.mlp(F.concat([h, r]))
-        t_tilde_head_currupted = self.mlp(F.concat([h_corrupted, r[:half]]))
-
-        # L2 norm
-        dis_pos = F.sqrt(F.batch_l2_norm_squared(t_tilde - t))
-        dis_neg_h = F.sqrt(F.batch_l2_norm_squared(t_tilde_head_currupted - t[:half]))
-        dis_neg_t = F.sqrt(F.batch_l2_norm_squared(t_tilde[half:] - t_corrupted))
-
-        dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0) # 1:1 size for corrupted heads and tails
-
-        loss = F.sum(F.relu(1 + dis_pos - dis_neg)) # margin fixed
-        chainer.report({'loss': loss})
-        return loss
-
-    @staticmethod
-    def create_generator(emb_sz, vocab_ent, vocab_rel):
-        # embedding link starts from 0, but token id starts from 1,
-        # thus make a spare embedding for dummy id 0
-        g = PretrainedGenerator(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1)
-        return g
+    def __call__(self, h_emb, r_emb):
+        h1 = F.tanh(self.l1(F.concat([h_emb, r_emb])))
+        h1 = F.dropout(h1, self.dropout)
+        h2 = F.dropout(F.tanh(self.l2(h1)), self.dropout)
+        h3 = self.l3(h2)
+        return h3
 
 
 class Discriminator(chainer.Chain):
@@ -138,6 +130,7 @@ class Discriminator(chainer.Chain):
     def __call__(self, h_emb, r_emb, t_emb):
         x = F.concat((h_emb, r_emb, t_emb))
         return F.sigmoid(self.mlp(x))
+
 
 class BilinearDiscriminator(chainer.Chain):
     def __init__(self, in_dim):

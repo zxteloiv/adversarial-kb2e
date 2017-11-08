@@ -58,7 +58,12 @@ def main():
 
     # MLE Scorer
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
-    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
+    # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
+    # generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+    generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
+                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
+                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
+                                       config.EMBED_SZ, ent_num], config.DROPOUT)
     embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
     chainer.serializers.load_npz(args.models[0], generator)
     chainer.serializers.load_npz(args.models[1], embeddings)

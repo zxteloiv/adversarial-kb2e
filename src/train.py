@@ -140,7 +140,12 @@ def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
 
 def MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
-    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
+    # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
+    # generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+    generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
+                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
+                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
+                                       config.EMBED_SZ, ent_num], config.DROPOUT)
     embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
     if len(sys.argv) > 1:
         chainer.serializers.load_npz(sys.argv[1], generator)
