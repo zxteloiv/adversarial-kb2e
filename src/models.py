@@ -52,56 +52,6 @@ class Embeddings(chainer.Chain):
         )
 
 
-class ResidualBlock(chainer.Chain):
-    def __init__(self, in_dim):
-        super(ResidualBlock, self).__init__()
-        with self.init_scope():
-            self.l1 = L.Linear(in_dim)
-            self.l2 = L.Linear(in_dim)
-
-        self.in_dim = in_dim
-
-    def __call__(self, x):
-        h1 = F.tanh(self.l1(x))
-        h2 = self.l2(h1)
-        h2 = F.selu(h2 + x)
-        return h2
-
-
-class ResidualGenerator(chainer.ChainList):
-    def __init__(self, layer_dims, dropout=0.0):
-        super(ResidualGenerator, self).__init__()
-        for i in xrange(len(layer_dims) - 2):
-            if layer_dims[i] == layer_dims[i + 1]:
-                link = ResidualBlock(layer_dims[i])
-                self.add_link(link)
-            else:
-                link = L.Linear(layer_dims[i], layer_dims[i + 1])
-                self.add_link(link)
-
-        # the last layer must be a simple linear mapping without activation
-        last_link = L.Linear(layer_dims[-2], layer_dims[-1])
-        self.add_link(last_link)
-
-        self.dropout = dropout
-
-    def __call__(self, x):
-        hidden = x
-        for i, link in enumerate(self.children()):
-            if i + 1 == len(self):  # last layer
-                hidden = link(hidden)
-            elif isinstance(link, L.Linear):
-                hidden = link(hidden)
-                hidden = F.tanh(hidden)
-                hidden = F.dropout(hidden, ratio=self.dropout)
-            elif isinstance(link, ResidualBlock):
-                hidden = link(hidden)
-                hidden = F.dropout(hidden, ratio=self.dropout)
-            else:
-                hidden = link(hidden)
-        return hidden
-
-
 class AdaptiveHighwayLayer(chainer.Chain):
     def __init__(self, in_dim, out_dim):
         super(AdaptiveHighwayLayer, self).__init__()

@@ -129,10 +129,6 @@ def MLEGenerator_setting(ent_num, rel_num, train_iter, valid_iter):
     #                                    config.EMBED_SZ, ent_num], config.DROPOUT)
     # generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
     #                                    config.EMBED_SZ, ent_num], config.DROPOUT)
-    # generator = models.ResidualGenerator([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
-    #                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
-    #                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
-    #                                       config.EMBED_SZ, ent_num], config.DROPOUT)
     embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
     if len(sys.argv) > 1:
         chainer.serializers.load_npz(sys.argv[1], generator)
