@@ -192,3 +192,27 @@ class TransE(chainer.Chain):
     @staticmethod
     def get_report_list():
         return ['epoch', 'iteration', 'loss', 'loss_pos', 'loss_neg', 'elapsed_time']
+
+
+class TransENNG(TransE):
+    """TransE without Negative Sampling"""
+    def __call__(self, h, r, t):
+        self.ent_emb.W.data = self.normalize_embedding(self.ent_emb.W.data)
+
+        bsz = h.shape[0]
+        xp = chainer.cuda.get_array_module(h)
+        h_emb = self.ent_emb(h).reshape(bsz, -1)
+        t_emb = self.ent_emb(t).reshape(bsz, -1)
+        r_emb = self.rel_emb(r).reshape(bsz, -1)
+
+        if self.norm == 1:
+            # L1 norm
+            dis_pos = F.sum(F.absolute(h_emb + r_emb - t_emb), axis=1)
+        else:
+            # L2 norm
+            dis_pos = F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - t_emb))
+
+        loss = F.sum(dis_pos)
+        chainer.report({'loss': loss, 'loss_pos': F.sum(dis_pos), 'loss_neg': 0})
+        return loss
+

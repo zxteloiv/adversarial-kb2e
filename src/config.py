@@ -23,7 +23,7 @@ TRAINING_LIMIT = (5000, 'iteration')
 # TRAINING_LIMIT = (5000, 'epoch')
 
 # model conf
-EMBED_SZ = 100
+EMBED_SZ = 50
 PENALTY_COEFF = 1
 TRANSE_MARGIN = 1.
 TRANSE_NORM = 1  # L1 norm =1, L2 norm =2
