@@ -161,31 +161,32 @@ class TransE(chainer.Chain):
         self.ent_emb.W.data = self.normalize_embedding(self.ent_emb.W.data)
 
         bsz = h.shape[0]
-        h = self.ent_emb(h).reshape(bsz, -1)
-        t = self.ent_emb(t).reshape(bsz, -1)
-        r = self.rel_emb(r).reshape(bsz, -1)
         xp = chainer.cuda.get_array_module(h)
+        h_emb = self.ent_emb(h).reshape(bsz, -1)
+        t_emb = self.ent_emb(t).reshape(bsz, -1)
+        r_emb = self.rel_emb(r).reshape(bsz, -1)
 
         half = bsz / 2
-        h_neg = xp.random.randint(1, self.ent_num + 1, size=(half,))
-        t_neg = xp.random.randint(1, self.ent_num + 1, size=(bsz - half,))
-        h_neg = self.ent_emb(h_neg)     # (half, emb_sz)
-        t_neg = self.ent_emb(t_neg)     # (bsz - half, emb_sz)
-
-        h_neg = F.concat([h_neg, h[half:]])     # (half + (bsz - half), emb_sz) = (bsz, emb_sz)
-        t_neg = F.concat([h[:half], t_neg])     # (half + (bsz - half), emb_sz) = (bsz, emb_sz)
+        h_corr = xp.random.randint(1, self.ent_num + 1, size=(half, 1)).astype('i')
+        t_corr = xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1)).astype('i')
+        h_neg = F.concat([h_corr, h[half:]], axis=0)
+        t_neg = F.concat([t[:half], t_corr], axis=0)
+        h_neg_emb = self.ent_emb(h_neg).reshape(bsz, -1)
+        t_neg_emb = self.ent_emb(t_neg).reshape(bsz, -1)
 
         if self.norm == 1:
             # L1 norm
-            dis_pos = F.sum(F.absolute(h + r - t), axis=1)
-            dis_neg = F.sum(F.absolute(h_neg + r - t_neg), axis=1)
+            dis_pos = F.sum(F.absolute(h_emb + r_emb - t_emb), axis=1)
+            dis_neg = F.sum(F.absolute(h_neg_emb + r_emb - t_neg_emb), axis=1)
         else:
             # L2 norm
-            dis_pos = F.sqrt(F.batch_l2_norm_squared(h + r - t))
-            dis_neg = F.sqrt(F.batch_l2_norm_squared(h_neg + r - t_neg))
+            dis_pos = F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - t_emb))
+            dis_neg = F.sqrt(F.batch_l2_norm_squared(h_neg_emb + r_emb - t_neg_emb))
 
-        loss = F.sum(F.relu(self.margin + dis_pos - dis_neg))
-        chainer.report({'loss': loss})
+        margin = self.margin * xp.sign(xp.absolute((h - h_neg).data) + xp.absolute((t - t_neg).data)).reshape(-1)
+
+        loss = F.sum(F.relu(margin + dis_pos - dis_neg))
+        chainer.report({'loss': loss, 'loss_pos': F.sum(dis_pos), 'loss_neg': F.sum(dis_neg)})
         return loss
 
     @staticmethod

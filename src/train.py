@@ -20,7 +20,7 @@ def main():
     # trainer = MLEGenerator_setting(ent_num, rel_num, train_iter, valid_iter)
 
     model = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.TRANSE_MARGIN, config.TRANSE_NORM)
-    trainer = standard_trainer(model, train_iter, valid_iter)
+    trainer = standard_trainer(model, train_iter, valid_iter, opt=chainer.optimizers.SGD(config.SGD_LR))
     trainer.run()
 
 
