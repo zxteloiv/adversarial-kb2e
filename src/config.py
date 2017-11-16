@@ -19,7 +19,7 @@ ADAM_BETA1 = 0.5
 SAMPLE_NUM = 700
 
 SAVE_ITER_INTERVAL = 1000
-TRAINING_LIMIT = (5000, 'iteration')
+TRAINING_LIMIT = (2000, 'iteration')
 # TRAINING_LIMIT = (5000, 'epoch')
 
 # model conf
