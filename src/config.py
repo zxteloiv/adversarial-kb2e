@@ -23,16 +23,14 @@ TRAINING_LIMIT = (5000, 'iteration')
 # TRAINING_LIMIT = (5000, 'epoch')
 
 # model conf
-EMBED_SZ = 100
+EMBED_SZ = 50
 PENALTY_COEFF = 1
-TRANSE_GAMMA = 3.2
-TRANSE_NORM = 2  # L1 norm =1, L2 norm =2
+TRANSE_MARGIN = 1.
+TRANSE_NORM = 1  # L1 norm =1, L2 norm =2
 WEIGHT_DECAY = 1e-5
 HINGE_LOSS_WEIGHT = 1
 
 DROPOUT = 0.2
-
-ADV_PERTUB = 0.
 
 # =============================================================================
 # auto computation for data, configurations listed below are generally forbidden

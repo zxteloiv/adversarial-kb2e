@@ -31,20 +31,15 @@ def main():
         from chainer.cuda import cupy
         xp = cupy
 
-    # # classical TransE
-    # transE = models.TransE.create_transe(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
-    # chainer.serializers.load_npz(args.models[0], transE)
-    # scorer = TransE_Scorer(transE, xp)
+    # classical TransE
+    transE = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.TRANSE_MARGIN, config.TRANSE_NORM)
+    chainer.serializers.load_npz(args.models[0], transE)
+    scorer = TransE_Scorer(transE, xp)
 
     # # generative model
     # generator = models.GenerativeModel(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
     # chainer.serializers.load_npz(args.models[0], generator)
     # scorer = Generative_Scorer(generator, xp)
-
-    # NTN model
-    model = models.NTN(config.EMBED_SZ, ent_num, rel_num, 5)
-    chainer.serializers.load_npz(args.models[0], model)
-    scorer = NTN_Scorer(model, xp)
 
     # # GAN testing
     # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
@@ -71,10 +66,6 @@ def main():
     #                                    config.EMBED_SZ, ent_num], config.DROPOUT)
     # generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
     #                                    config.EMBED_SZ, ent_num], config.DROPOUT)
-    # generator = models.ResidualGenerator([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
-    #                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
-    #                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
-    #                                       config.EMBED_SZ, ent_num], config.DROPOUT)
     # embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
     # chainer.serializers.load_npz(args.models[0], generator)
     # chainer.serializers.load_npz(args.models[1], embeddings)
@@ -83,24 +74,6 @@ def main():
     #     generator.to_gpu(config.DEVICE)
     #     embeddings.to_gpu(config.DEVICE)
     # scorer = MLEGen_Scorer(generator, embeddings, xp)
-
-    # # Experimental tesing
-    # ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
-    # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
-    # embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    # discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
-    # chainer.serializers.load_npz(args.models[0], generator)
-    # chainer.serializers.load_npz(args.models[1], discriminator)
-    # chainer.serializers.load_npz(args.models[2], embeddings)
-    #
-    # if config.DEVICE >= 0:
-    #     chainer.cuda.get_device_from_id(config.DEVICE).use()
-    #     generator.to_gpu(config.DEVICE)
-    #     discriminator.to_gpu(config.DEVICE)
-    #     embeddings.to_gpu(config.DEVICE)
-    #
-    # print args.models[0], args.models[1], args.models[2]
-    # scorer = Experimental_Scorer(generator, discriminator, embeddings, xp)
 
     run_ranking_test(scorer, vocab_ent, test_data)
 
@@ -138,23 +111,6 @@ class Generative_Scorer(object):
         values = -self.model.predict(h, r, self.ct).reshape(-1)
         scores = chainer.cuda.to_cpu(values.data)
         return scores
-
-
-class NTN_Scorer(object):
-    def __init__(self, model, xp):
-        self.xp = xp
-        self.model = model if config.DEVICE < 0 else model.to_gpu(config.DEVICE)
-
-    def set_candidate_t(self, candidate_t):
-        self.bsz = candidate_t.shape[0]
-        self.ct_emb = self.model.emb.ent(candidate_t).reshape(self.bsz, -1)
-
-    def __call__(self, h, r):
-        h_emb = self.model.emb.ent(h)
-        h_emb = F.broadcast_to(h_emb, self.ct_emb.shape)
-        value = self.model.scorer(h_emb, self.ct_emb, r).reshape(self.bsz).data
-        score = chainer.cuda.to_cpu(value)
-        return score
 
 
 class GAN_Scorer(object):

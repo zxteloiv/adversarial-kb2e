@@ -120,10 +120,11 @@ class Generator(chainer.Chain):
 
 class Discriminator(chainer.Chain):
     def __init__(self, in_dim):
-        super(Discriminator, self).__init__(
+        super(Discriminator, self).__init__()
+        with self.init_scope():
             # for h, r, and t
-            mlp=VarMLP([in_dim * 3, in_dim, in_dim, in_dim / 2, in_dim / 2, 1]),
-        )
+            self.mlp = VarMLP([in_dim * 3, in_dim, in_dim, in_dim / 2, in_dim / 2, 1])
+
         for link in self.mlp:
             link.W.data = TransE.normalize_embedding(link.W.data, axis=0)
 
@@ -132,61 +133,16 @@ class Discriminator(chainer.Chain):
         return F.sigmoid(self.mlp(x))
 
 
-class NTN(chainer.Chain):
-    def __init__(self, emb_sz, ent_num, rel_num, out_sz):
-        super(NTN, self).__init__()
-        with self.init_scope():
-            self.linear = L.Linear(out_sz, 1, nobias=True)
-            self.ntn = L.Bilinear(emb_sz, emb_sz, out_sz)
-            self.emb = Embeddings(emb_sz, ent_num, rel_num)
-
-        self.ent_num = ent_num
-        self.rel_num = rel_num
-        self.out_sz = out_sz
-
-    def __call__(self, h, t, r):
-        bsz = h.shape[0]
-        xp = chainer.cuda.get_array_module(h)
-
-        h_emb = self.emb.ent(h).reshape(bsz, -1)
-        t_emb = self.emb.ent(t).reshape(bsz, -1)
-        pos_score = self.scorer(h_emb, t_emb, r)
-
-        half = bsz / 2
-        h_neg = xp.random.randint(0, self.ent_num, size=(half, 1))
-        t_neg = xp.random.randint(0, self.ent_num, size=(bsz - half, 1))
-        h_neg = F.concat([h_neg, h[half:]])
-        t_neg = F.concat([t[:half], t_neg])
-
-        h_neg_emb = self.emb.ent(h_neg).reshape(bsz, -1)
-        t_neg_emb = self.emb.ent(t_neg).reshape(bsz, -1)
-        neg_score = self.scorer(h_neg_emb, t_neg_emb, r)
-
-        loss = F.average(F.relu(pos_score - neg_score + 1))
-
-        chainer.report({'loss': loss, 'loss_pos': F.sum(pos_score), 'loss_neg': F.sum(neg_score)})
-        return loss
-
-    def scorer(self, h_emb, t_emb, r):
-        h1 = F.tanh(self.ntn(h_emb, t_emb))
-        h2 = self.linear(h1)
-        return h2
-
-    @staticmethod
-    def get_report_list():
-        return ['epoch', 'iteration', 'loss', 'loss_pos', 'loss_neg', 'elapsed_time']
-
-
 class TransE(chainer.Chain):
     def __init__(self, emb_sz, ent_num, rel_num, margin, norm=1):
         random_range = 6 / math.sqrt(emb_sz)
-        initial_ent_W = np.random.uniform(-random_range, random_range, (ent_num, emb_sz))
-        initial_rel_W = np.random.uniform(-random_range, random_range, (rel_num, emb_sz))
+        initial_ent_w = np.random.uniform(-random_range, random_range, (ent_num, emb_sz))
+        initial_rel_w = np.random.uniform(-random_range, random_range, (rel_num, emb_sz))
 
-        super(TransE, self).__init__(
-            ent_emb=L.EmbedID(ent_num, emb_sz, initial_ent_W),
-            rel_emb=L.EmbedID(rel_num, emb_sz, initial_rel_W),
-        )
+        super(TransE, self).__init__()
+        with self.init_scope():
+            self.ent_emb = L.EmbedID(ent_num, emb_sz, initial_ent_w)
+            self.rel_emb = L.EmbedID(rel_num, emb_sz, initial_rel_w)
 
         self.ent_num = ent_num
         self.rel_num = rel_num
@@ -211,29 +167,27 @@ class TransE(chainer.Chain):
         xp = chainer.cuda.get_array_module(h)
 
         half = bsz / 2
-        h_corrupted = xp.random.randint(1, self.ent_num + 1, size=(half, 1))
-        t_corrupted = xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1))
-        h_corrupted = self.ent_emb(h_corrupted).reshape(half, -1)
-        t_corrupted = self.ent_emb(t_corrupted).reshape(bsz - half, -1)
+        h_neg = xp.random.randint(1, self.ent_num + 1, size=(half,))
+        t_neg = xp.random.randint(1, self.ent_num + 1, size=(bsz - half,))
+        h_neg = self.ent_emb(h_neg)     # (half, emb_sz)
+        t_neg = self.ent_emb(t_neg)     # (bsz - half, emb_sz)
+
+        h_neg = F.concat([h_neg, h[half:]])     # (half + (bsz - half), emb_sz) = (bsz, emb_sz)
+        t_neg = F.concat([h[:half], t_neg])     # (half + (bsz - half), emb_sz) = (bsz, emb_sz)
 
         if self.norm == 1:
             # L1 norm
             dis_pos = F.sum(F.absolute(h + r - t), axis=1)
-            dis_neg_h = F.sum(F.absolute(h_corrupted + r[:half] - t[:half]), axis=1)
-            dis_neg_t = F.sum(F.absolute(h[half:] + r[half:] - t_corrupted), axis=1)
+            dis_neg = F.sum(F.absolute(h_neg + r - t_neg), axis=1)
         else:
             # L2 norm
             dis_pos = F.sqrt(F.batch_l2_norm_squared(h + r - t))
-            dis_neg_h = F.sqrt(F.batch_l2_norm_squared(h_corrupted + r[:half] - t[:half]))
-            dis_neg_t = F.sqrt(F.batch_l2_norm_squared(h[half:] + r[half:] - t_corrupted))
+            dis_neg = F.sqrt(F.batch_l2_norm_squared(h_neg + r - t_neg))
 
-        dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0)  # 1:1 size for corrupted heads and tails
-
-        loss = F.average(F.relu(self.margin + dis_pos - dis_neg))
+        loss = F.sum(F.relu(self.margin + dis_pos - dis_neg))
         chainer.report({'loss': loss})
         return loss
 
     @staticmethod
-    def create_transe(emb_sz, vocab_ent, vocab_rel, gamma, norm=1):
-        m = TransE(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1, gamma, norm)
-        return m
+    def get_report_list():
+        return ['epoch', 'iteration', 'loss', 'loss_pos', 'loss_neg', 'elapsed_time']

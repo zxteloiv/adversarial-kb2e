@@ -16,58 +16,12 @@ def main():
 
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
 
-    # trainer = TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    # trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-
     # trainer = GAN_setting(ent_num, rel_num, train_iter, valid_iter)
-    # trainer = ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = MLEGenerator_setting(ent_num, rel_num, train_iter, valid_iter)
-    trainer = StandardTrainer(ent_num, rel_num, train_iter, valid_iter)
+
+    model = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.TRANSE_MARGIN, config.TRANSE_NORM)
+    trainer = standard_trainer(model, train_iter, valid_iter)
     trainer.run()
-
-
-def HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
-    hinge_gen = models.HingeLossGen.create_hinge_gen(config.EMBED_SZ, vocab_ent, vocab_rel,
-                                                           config.TRANSE_GAMMA, config.TRANSE_NORM)
-    if len(sys.argv) > 1:
-        chainer.serializers.load_npz(sys.argv[1], hinge_gen)
-
-    if config.DEVICE >= 0:
-        chainer.cuda.get_device_from_id(config.DEVICE).use()
-        hinge_gen.to_gpu(config.DEVICE)
-
-    # opt = chainer.optimizers.SGD(config.SGD_LR)
-    opt = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
-    opt.setup(hinge_gen)
-    opt.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY), 'weight_decay')
-    updater = chainer.training.StandardUpdater(train_iter, opt, device=config.DEVICE)
-    trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
-    trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
-    trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss', 'elapsed_time']))
-    trainer.extend(extensions.snapshot_object(hinge_gen, 'gen_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-    return trainer
-
-
-def TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
-    transE = models.TransE.create_transe(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA, config.TRANSE_NORM)
-    if len(sys.argv) > 1:
-        chainer.serializers.load_npz(sys.argv[1], transE)
-
-    if config.DEVICE >= 0:
-        chainer.cuda.get_device_from_id(config.DEVICE).use()
-        transE.to_gpu(config.DEVICE)
-
-    # opt = chainer.optimizers.SGD(config.SGD_LR)
-    opt = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
-    opt.setup(transE)
-    updater = chainer.training.StandardUpdater(train_iter, opt, device=config.DEVICE)
-    trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
-    trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
-    trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss', 'elapsed_time']))
-    trainer.extend(extensions.snapshot_object(transE, 'transE_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-    return trainer
 
 
 def GAN_setting(ent_num, rel_num, train_iter, valid_iter):
@@ -159,8 +113,7 @@ def MLEGenerator_setting(ent_num, rel_num, train_iter, valid_iter):
     return trainer
 
 
-def StandardTrainer(ent_num, rel_num, train_iter, valid_iter):
-    model = models.NTN(config.EMBED_SZ, ent_num, rel_num, 5)
+def standard_trainer(model, train_iter, valid_iter, opt=None):
     if len(sys.argv) > 1:
         chainer.serializers.load_npz(sys.argv[1], model)
 
@@ -168,7 +121,7 @@ def StandardTrainer(ent_num, rel_num, train_iter, valid_iter):
         chainer.cuda.get_device_from_id(config.DEVICE).use()
         model.to_gpu(config.DEVICE)
 
-    opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
+    opt_g = opt if opt is not None else chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt_g.setup(model)
 
     updater = chainer.training.StandardUpdater(train_iter, opt_g, device=config.DEVICE)
@@ -177,46 +130,6 @@ def StandardTrainer(ent_num, rel_num, train_iter, valid_iter):
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
     trainer.extend(extensions.PrintReport(model.get_report_list()))
     trainer.extend(extensions.snapshot_object(model, 'm_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-
-    return trainer
-
-
-def ExperimentalGAN_setting(ent_num, rel_num, train_iter, valid_iter):
-    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
-    embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
-    if len(sys.argv) > 1:
-        chainer.serializers.load_npz(sys.argv[1], generator)
-    if len(sys.argv) > 2:
-        chainer.serializers.load_npz(sys.argv[2], discriminator)
-    if len(sys.argv) > 3:
-        chainer.serializers.load_npz(sys.argv[3], embeddings)
-
-    if config.DEVICE >= 0:
-        chainer.cuda.get_device_from_id(config.DEVICE).use()
-        generator.to_gpu(config.DEVICE)
-        discriminator.to_gpu(config.DEVICE)
-        embeddings.to_gpu(config.DEVICE)
-
-    opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
-    opt_d = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
-    opt_e = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
-    opt_g.setup(generator)
-    opt_d.setup(discriminator)
-    opt_e.setup(embeddings)
-
-    updater = updaters.ExperimentalGANUpdater(train_iter, opt_g, opt_d, opt_e, config.DEVICE,
-                                              config.OPT_D_EPOCH, config.OPT_G_EPOCH, ent_num)
-
-    trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
-    trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
-    trainer.extend(extensions.PrintReport(updater.get_report_list()))
-    trainer.extend(extensions.snapshot_object(generator, 'g_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-    trainer.extend(extensions.snapshot_object(discriminator, 'd_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-    trainer.extend(extensions.snapshot_object(embeddings, 'e_iter_{.updater.iteration}'),
                    trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
 
     return trainer
