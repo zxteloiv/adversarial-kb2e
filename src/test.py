@@ -17,6 +17,8 @@ def main():
     chainer.config.train = False
 
     vocab_ent, vocab_rel = mod_dataset.load_vocab()
+    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+
     logging.getLogger().setLevel(logging.INFO)
     logging.info('ent vocab size=%d, rel vocab size=%d' % (len(vocab_ent), len(vocab_rel)))
     valid_data, test_data = map(lambda f: mod_dataset.load_corpus(f, vocab_ent, vocab_rel),
@@ -34,13 +36,17 @@ def main():
     # chainer.serializers.load_npz(args.models[0], transE)
     # scorer = TransE_Scorer(transE, xp)
 
-    # # MLP generator + Hinge Loss as the same as TransE
-    # gen = models.HingeLossGen.create_hinge_gen(config.EMBED_SZ, vocab_ent, vocab_rel, config.TRANSE_GAMMA)
-    # chainer.serializers.load_npz(args.models[0], gen)
-    # scorer = HingeGen_Scorer(gen, xp)
+    # # generative model
+    # generator = models.GenerativeModel(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+    # chainer.serializers.load_npz(args.models[0], generator)
+    # scorer = Generative_Scorer(generator, xp)
+
+    # NTN model
+    model = models.NTN(config.EMBED_SZ, ent_num, rel_num, 5)
+    chainer.serializers.load_npz(args.models[0], model)
+    scorer = NTN_Scorer(model, xp)
 
     # # GAN testing
-    # ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
     # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
     # discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
     # g_embedding = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
@@ -57,21 +63,26 @@ def main():
     # scorer = GAN_Scorer(generator, discriminator, g_embedding, d_embedding, xp)
 
     # MLE Scorer
-    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
     # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
     # generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
-    generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
-                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
-                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
-                                       config.EMBED_SZ, ent_num], config.DROPOUT)
-    embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    chainer.serializers.load_npz(args.models[0], generator)
-    chainer.serializers.load_npz(args.models[1], embeddings)
-    if config.DEVICE >= 0:
-        chainer.cuda.get_device_from_id(config.DEVICE).use()
-        generator.to_gpu(config.DEVICE)
-        embeddings.to_gpu(config.DEVICE)
-    scorer = MLEGen_Scorer(generator, embeddings, xp)
+    # generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
+    #                                    config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
+    #                                    config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
+    #                                    config.EMBED_SZ, ent_num], config.DROPOUT)
+    # generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
+    #                                    config.EMBED_SZ, ent_num], config.DROPOUT)
+    # generator = models.ResidualGenerator([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
+    #                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
+    #                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
+    #                                       config.EMBED_SZ, ent_num], config.DROPOUT)
+    # embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    # chainer.serializers.load_npz(args.models[0], generator)
+    # chainer.serializers.load_npz(args.models[1], embeddings)
+    # if config.DEVICE >= 0:
+    #     chainer.cuda.get_device_from_id(config.DEVICE).use()
+    #     generator.to_gpu(config.DEVICE)
+    #     embeddings.to_gpu(config.DEVICE)
+    # scorer = MLEGen_Scorer(generator, embeddings, xp)
 
     # # Experimental tesing
     # ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
@@ -111,20 +122,39 @@ class TransE_Scorer(object):
         scores = chainer.cuda.to_cpu(values) # cupy doesn't support argsort yet
         return scores
 
-class HingeGen_Scorer(object):
+
+class Generative_Scorer(object):
     def __init__(self, model, xp):
-        self.model = model if config.DEVICE < 0 else model.to_gpu(config.DEVICE)
         self.xp = xp
+        self.model = model if config.DEVICE < 0 else model.to_gpu(config.DEVICE)
 
     def set_candidate_t(self, candidate_t):
         self.bsz = candidate_t.shape[0]
-        self.ct_emb = self.model.gen.ent_emb(candidate_t).reshape(self.bsz, -1).data
+        self.ct = candidate_t
 
     def __call__(self, h, r):
-        t_tilde = self.model.run_gen(h, r).data
-        values = self.xp.linalg.norm(t_tilde - self.ct_emb, axis=1)
-        scores = chainer.cuda.to_cpu(values)
+        h = F.broadcast_to(h, self.ct.shape)
+        r = F.broadcast_to(r, self.ct.shape)
+        values = -self.model.predict(h, r, self.ct).reshape(-1)
+        scores = chainer.cuda.to_cpu(values.data)
         return scores
+
+
+class NTN_Scorer(object):
+    def __init__(self, model, xp):
+        self.xp = xp
+        self.model = model if config.DEVICE < 0 else model.to_gpu(config.DEVICE)
+
+    def set_candidate_t(self, candidate_t):
+        self.bsz = candidate_t.shape[0]
+        self.ct_emb = self.model.emb.ent(candidate_t).reshape(self.bsz, -1)
+
+    def __call__(self, h, r):
+        h_emb = self.model.emb.ent(h)
+        h_emb = F.broadcast_to(h_emb, self.ct_emb.shape)
+        value = self.model.scorer(h_emb, self.ct_emb, r).reshape(self.bsz).data
+        score = chainer.cuda.to_cpu(value)
+        return score
 
 
 class GAN_Scorer(object):
@@ -243,8 +273,8 @@ def run_ranking_test(scorer, vocab_ent, test_data):
         count += 1
 
         if i % 1000 == 0:
-            logging.info('%d testing data processed, temp rank: %d, hits10: %d, avgrank: %.4f' % (
-                count, avgrank, hits10, avgrank / float(count)))
+            logging.info('%d testing data processed, temp rank: %d, hits10: %d, hits10p: %.4f, avgrank: %.4f' % (
+                count, avgrank, hits10, hits10 * 1.0 / count, avgrank / float(count)))
 
     avgrank /= count * 1.0
     hits10 /= count * 1.0

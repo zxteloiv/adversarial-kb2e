@@ -10,12 +10,12 @@ import math
 
 class MLP(chainer.Chain):
     def __init__(self, in_dim, out_dim):
-        super(MLP, self).__init__(
-            l1=L.Linear(in_dim, in_dim),
-            l2=L.Linear(in_dim, in_dim),
-            l3=L.Linear(in_dim, in_dim),
-            l4=L.Linear(in_dim, out_dim),
-        )
+        super(MLP, self).__init__()
+        with self.init_scope():
+            self.l1 = L.Linear(in_dim, in_dim)
+            self.l2 = L.Linear(in_dim, in_dim)
+            self.l3 = L.Linear(in_dim, in_dim)
+            self.l4 = L.Linear(in_dim, out_dim)
 
     def __call__(self, x):
         h1 = F.relu(self.l1(x))
@@ -29,7 +29,7 @@ class VarMLP(chainer.ChainList):
     def __init__(self, layer_dims, dropout=0.9):
         super(VarMLP, self).__init__()
         for i in xrange(len(layer_dims) - 1):
-            l = L.Linear(layer_dims[i], layer_dims[i+1])
+            l = L.Linear(layer_dims[i], layer_dims[i + 1])
             self.add_link(l)
         self.dropout = dropout
 
@@ -50,6 +50,56 @@ class Embeddings(chainer.Chain):
             ent=L.EmbedID(ent_num, emb_sz),
             rel=L.EmbedID(rel_num, emb_sz)
         )
+
+
+class ResidualBlock(chainer.Chain):
+    def __init__(self, in_dim):
+        super(ResidualBlock, self).__init__()
+        with self.init_scope():
+            self.l1 = L.Linear(in_dim)
+            self.l2 = L.Linear(in_dim)
+
+        self.in_dim = in_dim
+
+    def __call__(self, x):
+        h1 = F.tanh(self.l1(x))
+        h2 = self.l2(h1)
+        h2 = F.selu(h2 + x)
+        return h2
+
+
+class ResidualGenerator(chainer.ChainList):
+    def __init__(self, layer_dims, dropout=0.0):
+        super(ResidualGenerator, self).__init__()
+        for i in xrange(len(layer_dims) - 2):
+            if layer_dims[i] == layer_dims[i + 1]:
+                link = ResidualBlock(layer_dims[i])
+                self.add_link(link)
+            else:
+                link = L.Linear(layer_dims[i], layer_dims[i + 1])
+                self.add_link(link)
+
+        # the last layer must be a simple linear mapping without activation
+        last_link = L.Linear(layer_dims[-2], layer_dims[-1])
+        self.add_link(last_link)
+
+        self.dropout = dropout
+
+    def __call__(self, x):
+        hidden = x
+        for i, link in enumerate(self.children()):
+            if i + 1 == len(self):  # last layer
+                hidden = link(hidden)
+            elif isinstance(link, L.Linear):
+                hidden = link(hidden)
+                hidden = F.tanh(hidden)
+                hidden = F.dropout(hidden, ratio=self.dropout)
+            elif isinstance(link, ResidualBlock):
+                hidden = link(hidden)
+                hidden = F.dropout(hidden, ratio=self.dropout)
+            else:
+                hidden = link(hidden)
+        return hidden
 
 
 class AdaptiveHighwayLayer(chainer.Chain):
@@ -77,7 +127,7 @@ class HighwayNetwork(chainer.ChainList):
     def __init__(self, layer_dims, dropout=0.0):
         super(HighwayNetwork, self).__init__()
         for i in xrange(len(layer_dims) - 2):
-            link = AdaptiveHighwayLayer(layer_dims[i], layer_dims[i+1])
+            link = AdaptiveHighwayLayer(layer_dims[i], layer_dims[i + 1])
             self.add_link(link)
 
         # the last layer must be a simple linear mapping without activation
@@ -125,98 +175,56 @@ class Discriminator(chainer.Chain):
             mlp=VarMLP([in_dim * 3, in_dim, in_dim, in_dim / 2, in_dim / 2, 1]),
         )
         for link in self.mlp:
-            link.W.data = HingeLossGen.normalize_embedding(link.W.data, axis=0)
+            link.W.data = TransE.normalize_embedding(link.W.data, axis=0)
 
     def __call__(self, h_emb, r_emb, t_emb):
         x = F.concat((h_emb, r_emb, t_emb))
         return F.sigmoid(self.mlp(x))
 
 
-class BilinearDiscriminator(chainer.Chain):
-    def __init__(self, in_dim):
-        super(BilinearDiscriminator, self).__init__(
-            bl=L.Bilinear(in_dim * 3, in_dim * 3, 1)
-        )
+class NTN(chainer.Chain):
+    def __init__(self, emb_sz, ent_num, rel_num, out_sz):
+        super(NTN, self).__init__()
+        with self.init_scope():
+            self.linear = L.Linear(out_sz, 1, nobias=True)
+            self.ntn = L.Bilinear(emb_sz, emb_sz, out_sz)
+            self.emb = Embeddings(emb_sz, ent_num, rel_num)
 
-    def __call__(self, h_emb, r_emb, t_emb):
-        x = F.concat((h_emb, r_emb, t_emb)) # batch * embedding
-        return self.bl(x, x)
-
-
-class NonparametricDiscriminator(chainer.Chain):
-    def __init__(self, in_dim):
-        super(NonparametricDiscriminator, self).__init__()
-
-    def __call__(self, h_emb, r_emb, t_emb):
-        return F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - t_emb)).reshape(-1, 1)
-
-
-class HingeLossGen(chainer.Chain):
-    def __init__(self, emb_sz, ent_num, rel_num, margin, norm=1):
-        super(HingeLossGen, self).__init__(
-            gen=Generator(emb_sz, ent_num, rel_num)
-        )
-
-        self.emb_sz = emb_sz
         self.ent_num = ent_num
         self.rel_num = rel_num
-        self.margin = margin
-        self.norm = norm
-        self.gen.rel_emb.W.data = self.normalize_embedding(self.gen.rel_emb.W.data)
+        self.out_sz = out_sz
 
-    @staticmethod
-    def normalize_embedding(x, eps=1e-7, axis=1):
-        xp = chainer.cuda.get_array_module(x)
-        norm = xp.linalg.norm(x, axis=axis) + eps
-        norm = xp.expand_dims(norm, axis=axis)
-        return x / norm
-
-    def __call__(self, h, r, t):
-        self.gen.ent_emb.W.data = self.normalize_embedding(self.gen.ent_emb.W.data)
-
-        xp = chainer.cuda.get_array_module(h)
+    def __call__(self, h, t, r):
         bsz = h.shape[0]
+        xp = chainer.cuda.get_array_module(h)
+
+        h_emb = self.emb.ent(h).reshape(bsz, -1)
+        t_emb = self.emb.ent(t).reshape(bsz, -1)
+        pos_score = self.scorer(h_emb, t_emb, r)
+
         half = bsz / 2
-        h_corrupted = xp.random.randint(1, self.ent_num + 1, size=(half, 1))
-        t_corrupted = xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1))
+        h_neg = xp.random.randint(0, self.ent_num, size=(half, 1))
+        t_neg = xp.random.randint(0, self.ent_num, size=(bsz - half, 1))
+        h_neg = F.concat([h_neg, h[half:]])
+        t_neg = F.concat([t[:half], t_neg])
 
-        t = self.gen.ent_emb(t).reshape(bsz, -1)
-        t_corrupted = self.gen.ent_emb(t_corrupted).reshape(bsz - half, -1)
+        h_neg_emb = self.emb.ent(h_neg).reshape(bsz, -1)
+        t_neg_emb = self.emb.ent(t_neg).reshape(bsz, -1)
+        neg_score = self.scorer(h_neg_emb, t_neg_emb, r)
 
-        t_tilde = self.gen(h, r)
-        t_tilde_head_currupted = self.gen(h_corrupted, r[:half])
+        loss = F.average(F.relu(pos_score - neg_score + 1))
 
-        if self.norm == 1:
-            # L1 norm
-            dis_pos = F.sum(F.absolute(t_tilde - t), axis=1)
-            dis_neg_h = F.sum(F.absolute(t_tilde_head_currupted - t[:half]), axis=1)
-            dis_neg_t = F.sum(F.absolute(t_tilde[half:] - t_corrupted), axis=1)
-        else:
-            # L2 norm
-            dis_pos = F.sqrt(F.batch_l2_norm_squared(t_tilde - t))
-            dis_neg_h = F.sqrt(F.batch_l2_norm_squared(t_tilde_head_currupted - t[:half]))
-            dis_neg_t = F.sqrt(F.batch_l2_norm_squared(t_tilde[half:] - t_corrupted))
-
-        dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0) # 1:1 size for corrupted heads and tails
-
-        loss = F.average(F.relu(self.margin + dis_pos - dis_neg))
-        chainer.report({'loss': loss})
+        chainer.report({'loss': loss, 'loss_pos': F.sum(pos_score), 'loss_neg': F.sum(neg_score)})
         return loss
 
-    def run_gen(self, h, r):
-        t_tilde = self.gen(h, r)
-        return t_tilde
-
-    def serialize(self, serializer):
-        super(HingeLossGen, self).serialize(serializer)
-        self.emb_sz = serializer("self.emb_sz", self.emb_sz)
-        self.ent_num = serializer("self.ent_num", self.ent_num)
-        self.rel_num = serializer("self.rel_num", self.rel_num)
+    def scorer(self, h_emb, t_emb, r):
+        h1 = F.tanh(self.ntn(h_emb, t_emb))
+        h2 = self.linear(h1)
+        return h2
 
     @staticmethod
-    def create_hinge_gen(emb_sz, vocab_ent, vocab_rel, gamma, norm=1):
-        m = HingeLossGen(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1, gamma, norm)
-        return m
+    def get_report_list():
+        return ['epoch', 'iteration', 'loss', 'loss_pos', 'loss_neg', 'elapsed_time']
 
 
 class TransE(chainer.Chain):
@@ -236,7 +244,8 @@ class TransE(chainer.Chain):
         self.norm = norm
         self.rel_emb.W.data = self.normalize_embedding(self.rel_emb.W.data)
 
-    def normalize_embedding(self, x, eps=1e-7, axis=1):
+    @staticmethod
+    def normalize_embedding(x, eps=1e-7, axis=1):
         xp = chainer.cuda.get_array_module(x)
         norm = xp.linalg.norm(x, axis=axis) + eps
         norm = xp.expand_dims(norm, axis=axis)
@@ -268,7 +277,7 @@ class TransE(chainer.Chain):
             dis_neg_h = F.sqrt(F.batch_l2_norm_squared(h_corrupted + r[:half] - t[:half]))
             dis_neg_t = F.sqrt(F.batch_l2_norm_squared(h[half:] + r[half:] - t_corrupted))
 
-        dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0) # 1:1 size for corrupted heads and tails
+        dis_neg = F.concat([dis_neg_h, dis_neg_t], axis=0)  # 1:1 size for corrupted heads and tails
 
         loss = F.average(F.relu(self.margin + dis_pos - dis_neg))
         chainer.report({'loss': loss})
@@ -278,34 +287,3 @@ class TransE(chainer.Chain):
     def create_transe(emb_sz, vocab_ent, vocab_rel, gamma, norm=1):
         m = TransE(emb_sz, len(vocab_ent) + 1, len(vocab_rel) + 1, gamma, norm)
         return m
-
-
-# copied selu source code from chainer 3.0.0rc
-from chainer.functions.activation import elu
-
-
-def selu(x,
-         alpha=1.6732632423543772848170429916717,
-         scale=1.0507009873554804934193349852946):
-    """Scaled Exponential Linear Unit function.
-    For parameters :math:`\\alpha` and :math:`\\lambda`, it is expressed as
-    .. math::
-        f(x) = \\lambda \\left \\{ \\begin{array}{ll}
-        x & {\\rm if}~ x \\ge 0 \\\\
-        \\alpha (\\exp(x) - 1) & {\\rm if}~ x < 0,
-        \\end{array} \\right.
-    See: https://arxiv.org/abs/1706.02515
-    Args:
-        x (:class:`~chainer.Variable` or :class:`numpy.ndarray` or \
-        :class:`cupy.ndarray`):
-            Input variable. A :math:`(s_1, s_2, ..., s_N)`-shaped float array.
-        alpha (float): Parameter :math:`\\alpha`.
-        scale (float): Parameter :math:`\\lambda`.
-    Returns:
-        ~chainer.Variable: Output variable. A
-        :math:`(s_1, s_2, ..., s_N)`-shaped float array.
-    """
-    return scale * elu.elu(x, alpha=alpha)
-
-
-

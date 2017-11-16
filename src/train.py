@@ -14,12 +14,15 @@ def main():
     dataset = map(lambda x: mod_dataset.load_corpus(x, vocab_ent, vocab_rel), (config.TRAIN_DATA, config.VALID_DATA))
     train_iter, valid_iter = map(lambda x: chainer.iterators.SerialIterator(x, batch_size=config.BATCH_SZ), dataset)
 
+    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+
     # trainer = TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
     # trainer = HingeGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    # trainer = GAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    # trainer = GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+
+    # trainer = GAN_setting(ent_num, rel_num, train_iter, valid_iter)
     # trainer = ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
-    trainer = MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter)
+    # trainer = MLEGenerator_setting(ent_num, rel_num, train_iter, valid_iter)
+    trainer = StandardTrainer(ent_num, rel_num, train_iter, valid_iter)
     trainer.run()
 
 
@@ -67,28 +70,7 @@ def TransE_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     return trainer
 
 
-def GAN_Pretraining_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
-    gen = models.PretrainedGenerator.create_generator(config.EMBED_SZ, vocab_ent, vocab_rel)
-    if len(sys.argv) > 1:
-        chainer.serializers.load_npz(sys.argv[1], gen)
-
-    if config.DEVICE >= 0:
-        chainer.cuda.get_device_from_id(config.DEVICE).use()
-        gen.to_gpu(config.DEVICE)
-
-    opt = chainer.optimizers.SGD(config.SGD_LR)
-    opt.setup(gen)
-    updater = chainer.training.StandardUpdater(train_iter, opt, device=config.DEVICE)
-    trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
-    trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
-    trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'loss', 'elapsed_time']))
-    trainer.extend(extensions.snapshot_object(gen, 'gen_iter_{.updater.iteration}'),
-                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
-    return trainer
-
-
-def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
-    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+def GAN_setting(ent_num, rel_num, train_iter, valid_iter):
     generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
     discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
     g_embedding = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
@@ -138,14 +120,19 @@ def GAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     return trainer
 
 
-def MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
-    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+def MLEGenerator_setting(ent_num, rel_num, train_iter, valid_iter):
     # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
-    # generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
-    generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
-                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
-                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
-                                       config.EMBED_SZ, ent_num], config.DROPOUT)
+    generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+    # generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
+    #                                    config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
+    #                                    config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
+    #                                    config.EMBED_SZ, ent_num], config.DROPOUT)
+    # generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
+    #                                    config.EMBED_SZ, ent_num], config.DROPOUT)
+    # generator = models.ResidualGenerator([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
+    #                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
+    #                                       config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
+    #                                       config.EMBED_SZ, ent_num], config.DROPOUT)
     embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
     if len(sys.argv) > 1:
         chainer.serializers.load_npz(sys.argv[1], generator)
@@ -176,8 +163,30 @@ def MLEGenerator_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
     return trainer
 
 
-def ExperimentalGAN_setting(vocab_ent, vocab_rel, train_iter, valid_iter):
-    ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+def StandardTrainer(ent_num, rel_num, train_iter, valid_iter):
+    model = models.NTN(config.EMBED_SZ, ent_num, rel_num, 5)
+    if len(sys.argv) > 1:
+        chainer.serializers.load_npz(sys.argv[1], model)
+
+    if config.DEVICE >= 0:
+        chainer.cuda.get_device_from_id(config.DEVICE).use()
+        model.to_gpu(config.DEVICE)
+
+    opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
+    opt_g.setup(model)
+
+    updater = chainer.training.StandardUpdater(train_iter, opt_g, device=config.DEVICE)
+
+    trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
+    trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
+    trainer.extend(extensions.PrintReport(model.get_report_list()))
+    trainer.extend(extensions.snapshot_object(model, 'm_iter_{.updater.iteration}'),
+                   trigger=(config.SAVE_ITER_INTERVAL, 'iteration'))
+
+    return trainer
+
+
+def ExperimentalGAN_setting(ent_num, rel_num, train_iter, valid_iter):
     generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
     embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
     discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
