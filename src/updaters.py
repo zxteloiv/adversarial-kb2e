@@ -217,6 +217,27 @@ class MLEGenUpdater(chainer.training.StandardUpdater):
         return ['epoch', 'iteration', 'loss_g', 'elapsed_time']
 
 
+class MLEGenPointwiseUpdater(MLEGenUpdater):
+    def batch_update(self, h, r, t):
+        xp = chainer.cuda.get_array_module(h)
+        bsz = h.shape[0]
+        h_emb = self.emb.ent(h).reshape(bsz, -1)    # (bsz, emb_sz)
+        r_emb = self.emb.rel(r).reshape(bsz, -1)    # (bsz, emb_sz)
+        logits = self.g(F.concat([h_emb, r_emb]))   # (bsz, V)
+
+        probs = F.sigmoid(logits)   # (bsz, V)
+        selected = F.select_item(probs, t.reshape(-1))
+        loss = F.average(selected)
+
+        self.g.cleargrads()
+        self.emb.cleargrads()
+        loss.backward()
+        self.get_optimizer('main').update()
+        self.opt_e.update()
+
+        chainer.report({'loss_g': loss})
+
+
 def batch_multinomial(xp, batch_probs, size):
     """
     Sample the multinomial distributions given a batch of probabilities

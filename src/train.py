@@ -95,7 +95,8 @@ def MLEGenerator_setting(ent_num, rel_num, train_iter, valid_iter):
     opt_g.setup(generator)
     opt_e.setup(embeddings)
 
-    updater = updaters.MLEGenUpdater(train_iter, opt_g, opt_e, ent_num, config.DEVICE)
+    # updater = updaters.MLEGenUpdater(train_iter, opt_g, opt_e, ent_num, config.DEVICE)
+    updater = updaters.MLEGenPointwiseUpdater(train_iter, opt_g, opt_e, ent_num, config.DEVICE)
 
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
