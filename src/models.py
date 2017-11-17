@@ -47,8 +47,10 @@ class VarMLP(chainer.ChainList):
 class Embeddings(chainer.Chain):
     def __init__(self, emb_sz, ent_num, rel_num):
         random_range = 6 / math.sqrt(emb_sz)
-        initial_ent_w = np.random.uniform(-random_range, random_range, (ent_num, emb_sz))
-        initial_rel_w = np.random.uniform(-random_range, random_range, (rel_num, emb_sz))
+        # initial_ent_w = np.random.uniform(-random_range, random_range, (ent_num, emb_sz))
+        # initial_rel_w = np.random.uniform(-random_range, random_range, (rel_num, emb_sz))
+        initial_ent_w = None
+        initial_rel_w = None
 
         super(Embeddings, self).__init__(
             ent=L.EmbedID(ent_num, emb_sz, initialW=initial_ent_w),
