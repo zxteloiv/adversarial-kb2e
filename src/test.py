@@ -136,7 +136,7 @@ class MLEGen_Scorer(object):
         h_raw = self.e.ent(h).reshape(h.shape[0], -1)   # (1, emb_sz)
         r_raw = self.e.rel(r).reshape(r.shape[0], -1)   # (1, emb_sz)
         logits = self.g(F.concat([h_raw, r_raw])).reshape(-1)
-        value = -logits
+        value = logits
         s = chainer.cuda.to_cpu(value.data)
         return s
 
