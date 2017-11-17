@@ -171,27 +171,8 @@ class GANUpdater(AbstractGANUpdator):
         bsz = h_emb.shape[0]
         logits = self.g(F.concat((h_emb, r_emb)))
         probs = F.softmax(logits, axis=1)
-        samples = self.batch_multinomial(probs, 1).reshape(bsz,)
+        samples = batch_multinomial(chainer.cuda.get_array_module(h_emb), probs, 1).reshape(bsz,)
         return samples, probs
-
-    @staticmethod
-    def batch_multinomial(batch_probs, size):
-        """
-        Sample the multinomial distributions given a batch of probabilities
-        :param batch_probs: has shape (batch_size, V), a batch of probabilities
-        :param size: int, the number of examples to sample every distribution
-        :return: has shape (batch_size, size)
-        """
-        xp = chainer.cuda.get_array_module(batch_probs)
-        log_probs = F.log(batch_probs)                                      # (bsz, V)
-        nums = xp.empty((size, log_probs.shape[0])).astype('int32')    # (K, bsz)
-        for i in xrange(size):
-            noise = xp.random.rand(*log_probs.shape).astype('f')   # bsz, V
-            rand = F.argmax(log_probs - F.log(-F.log(noise)), axis=1)
-            nums[i] = rand.data
-
-        # return F.transpose(nums)
-        return nums
 
     @staticmethod
     def get_report_list():
@@ -212,6 +193,9 @@ class MLEGenUpdater(chainer.training.StandardUpdater):
         data_iter = self.get_iterator('main')
         batch = data_iter.__next__()
         h, r, t = self.converter(batch, self.device)
+        self.batch_update(h, r, t)
+
+    def batch_update(self, h, r, t):
         xp = chainer.cuda.get_array_module(h)
         bsz = h.shape[0]
         h_emb = self.emb.ent(h).reshape(bsz, -1)    # (bsz, emb_sz)
@@ -228,95 +212,33 @@ class MLEGenUpdater(chainer.training.StandardUpdater):
 
         chainer.report({'loss_g': loss})
 
-    def get_report_list(self):
+    @staticmethod
+    def get_report_list():
         return ['epoch', 'iteration', 'loss_g', 'elapsed_time']
 
 
-class RKLGenUpdater(chainer.training.StandardUpdater):
+def batch_multinomial(xp, batch_probs, size):
     """
-    Reversed KL divergence
+    Sample the multinomial distributions given a batch of probabilities
+    :param batch_probs: has shape (batch_size, V), a batch of probabilities
+    :param size: int, the number of examples to sample every distribution
+    :return: has shape (batch_size, size)
     """
-    def __init__(self, data_iter, opt_g, opt_e, device, sample_num=100):
-        super(RKLGenUpdater, self).__init__(data_iter, opt_g, device=device)
-        self.opt_e = opt_e
-        self.opt_g = opt_g
-        self.g = opt_g.target
-        self.emb = opt_e.target
-        self.sample_num = sample_num
-        self.xp = np
-        if self.device >= 0:
-            from chainer.cuda import cupy
-            self.xp = cupy
+    log_probs = F.log(batch_probs)                                      # (bsz, V)
+    nums = xp.empty((size, log_probs.shape[0])).astype('int32')    # (K, bsz)
+    for i in xrange(size):
+        noise = xp.random.rand(*log_probs.shape).astype('f')   # bsz, V
+        rand = F.argmax(log_probs - F.log(-F.log(noise)), axis=1)
+        nums[i] = rand.data
 
-    def update_core(self):
-        data_iter = self.get_iterator('main')
-        batch = data_iter.__next__()
-        h, r, t = self.converter(batch, self.device)
-        bsz = h.shape[0]
-        h_emb = self.emb.ent(h).reshape(bsz, -1)    # (bsz, emb_sz)
-        r_emb = self.emb.rel(r).reshape(bsz, -1)    # (bsz, emb_sz)
-        temperature = 1.0
-        logits = self.g(F.concat([h_emb, r_emb]))   # (bsz, V)
-        probs = F.softmax(logits / temperature)     # (bsz, V)
+    # # sampling the batch of distributions for K times directly will exhaust the GPU memory,
+    # # thus still we choose to use sample K numbers each on each
 
-        # \nabla_\theta J \simeq
-        # \sum_{h,r}\frac{1}{K}\sum_{k=1}^K
-        #       (\log \frac{p_\theta(\tilde t_k \mid h, r)}{p(\tilde t_k\mid h, r)}+1)
-        #       \nabla_\theta\log p_\theta(\tilde t_k\mid h, r)
-        rand_ts = self.batch_multinomial(probs, self.sample_num)            # (K, bsz)
-
-        list_probs = []                                                     # [(bsz, 1)], len=K
-        for r in xrange(len(rand_ts)):
-            rand_probs = F.select_item(probs, rand_ts[r].reshape(-1))       # (bsz,)
-            rand_probs = F.expand_dims(rand_probs, 1)                       # (bsz, 1)
-            list_probs.append(rand_probs)
-        rand_probs = F.hstack(list_probs).reshape(-1, 1)                    # (bsz, K) -> (bsz * K, 1)
-        log_probs = F.log(rand_probs + 1e-7)                                # (bsz * K, 1)
-
-        t = F.broadcast_to(t.reshape(-1, 1), (bsz, self.sample_num))        # (bsz, 1) -> (bsz, K)
-        rand_ts = F.transpose(rand_ts)
-        t, rand_ts = map(lambda x: x.data.astype('f'), (t, rand_ts))
-        p_real = 1 - self.xp.sign(self.xp.absolute(t - rand_ts)) + 1e-7     # (bsz, K)
-        p_real = p_real.reshape(-1, 1)                                      # (bsz * K, 1)
-        reward = (F.log(rand_probs / p_real) + 1).data                      # (bsz * K, 1)
-
-        loss = F.sum(reward * log_probs) / self.sample_num
-
-        self.g.cleargrads()
-        self.emb.cleargrads()
-        loss.backward()
-        self.opt_g.update()
-        self.opt_e.update()
-
-        chainer.report({'loss_g': loss, 'target': F.sum(reward) / self.sample_num})
-
-    def batch_multinomial(self, batch_probs, size):
-        """
-        Sample the multinomial distributions given a batch of probabilities
-        :param batch_probs: has shape (batch_size, V), a batch of probabilities
-        :param size: int, the number of examples to sample every distribution
-        :return: has shape (batch_size, size)
-        """
-        log_probs = F.log(batch_probs)                                      # (bsz, V)
-        nums = self.xp.empty((size, log_probs.shape[0])).astype('int32')    # (K, bsz)
-        for i in xrange(size):
-            noise = self.xp.random.rand(*log_probs.shape).astype('f')   # bsz, V
-            rand = F.argmax(log_probs - F.log(-F.log(noise)), axis=1)
-            nums[i] = rand.data
-
-        # # sampling the batch of distributions for K times directly will exhaust the GPU memory,
-        # # thus still we choose to use sample K numbers each on each
-
-        # K_log_probs = F.broadcast_to(log_probs, (size,) + log_probs.shape)  # (K, bsz, V)
-        # noise = self.xp.random.rand(*K_log_probs.shape).astype('f')         # (K, bsz, V)
-        # nums = F.argmax(K_log_probs - F.log(-F.log(noise)), axis=2)         # (K, bsz)
-        # nums_t = F.transpose(nums)
-        # del log_probs, K_log_probs, noise, nums
-        # return nums_t
-        # return self.xp.ones((batch_probs.shape[0], size), dtype=self.xp.int32)
-        return nums  #F.transpose(nums)
-
-    def get_report_list(self):
-        return ['epoch', 'iteration', 'loss_g', 'target', 'elapsed_time']
-
-
+    # K_log_probs = F.broadcast_to(log_probs, (size,) + log_probs.shape)  # (K, bsz, V)
+    # noise = xp.random.rand(*K_log_probs.shape).astype('f')         # (K, bsz, V)
+    # nums = F.argmax(K_log_probs - F.log(-F.log(noise)), axis=2)         # (K, bsz)
+    # nums_t = F.transpose(nums)
+    # del log_probs, K_log_probs, noise, nums
+    # return nums_t
+    # return xp.ones((batch_probs.shape[0], size), dtype=self.xp.int32)
+    return nums  #F.transpose(nums)

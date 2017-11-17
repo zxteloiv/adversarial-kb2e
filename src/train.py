@@ -17,12 +17,12 @@ def main():
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
 
     # trainer = GAN_setting(ent_num, rel_num, train_iter, valid_iter)
-    # trainer = MLEGenerator_setting(ent_num, rel_num, train_iter, valid_iter)
+    trainer = MLEGenerator_setting(ent_num, rel_num, train_iter, valid_iter)
 
-    model = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.TRANSE_MARGIN, config.TRANSE_NORM)
+    # Exp 1. & 2. TransE with and without negative sampling
+    # model = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.TRANSE_MARGIN, config.TRANSE_NORM)
     # model = models.TransENNG(config.EMBED_SZ, ent_num, rel_num, config.TRANSE_MARGIN, config.TRANSE_NORM)
-    # trainer = standard_trainer(model, train_iter, valid_iter, opt=chainer.optimizers.SGD(config.SGD_LR))
-    trainer = standard_trainer(model, train_iter, valid_iter)
+    # trainer = standard_trainer(model, train_iter, valid_iter)
     trainer.run()
 
 
@@ -79,12 +79,6 @@ def GAN_setting(ent_num, rel_num, train_iter, valid_iter):
 def MLEGenerator_setting(ent_num, rel_num, train_iter, valid_iter):
     # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
     generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
-    # generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
-    #                                    config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
-    #                                    config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
-    #                                    config.EMBED_SZ, ent_num], config.DROPOUT)
-    # generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
-    #                                    config.EMBED_SZ, ent_num], config.DROPOUT)
     embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
     if len(sys.argv) > 1:
         chainer.serializers.load_npz(sys.argv[1], generator)
@@ -102,7 +96,6 @@ def MLEGenerator_setting(ent_num, rel_num, train_iter, valid_iter):
     opt_e.setup(embeddings)
 
     updater = updaters.MLEGenUpdater(train_iter, opt_g, opt_e, ent_num, config.DEVICE)
-    # updater = updaters.RKLGenUpdater(train_iter, opt_g, opt_e, config.DEVICE, config.SAMPLE_NUM)
 
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))

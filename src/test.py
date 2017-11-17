@@ -31,15 +31,10 @@ def main():
         from chainer.cuda import cupy
         xp = cupy
 
-    # classical TransE
-    transE = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.TRANSE_MARGIN, config.TRANSE_NORM)
-    chainer.serializers.load_npz(args.models[0], transE)
-    scorer = TransE_Scorer(transE, xp)
-
-    # # generative model
-    # generator = models.GenerativeModel(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
-    # chainer.serializers.load_npz(args.models[0], generator)
-    # scorer = Generative_Scorer(generator, xp)
+    # # classical TransE
+    # transE = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.TRANSE_MARGIN, config.TRANSE_NORM)
+    # chainer.serializers.load_npz(args.models[0], transE)
+    # scorer = TransE_Scorer(transE, xp)
 
     # # GAN testing
     # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
@@ -58,22 +53,15 @@ def main():
     # scorer = GAN_Scorer(generator, discriminator, g_embedding, d_embedding, xp)
 
     # MLE Scorer
-    # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
-    # generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
-    # generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
-    #                                    config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
-    #                                    config.EMBED_SZ, config.EMBED_SZ, config.EMBED_SZ,
-    #                                    config.EMBED_SZ, ent_num], config.DROPOUT)
-    # generator = models.HighwayNetwork([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ,
-    #                                    config.EMBED_SZ, ent_num], config.DROPOUT)
-    # embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    # chainer.serializers.load_npz(args.models[0], generator)
-    # chainer.serializers.load_npz(args.models[1], embeddings)
-    # if config.DEVICE >= 0:
-    #     chainer.cuda.get_device_from_id(config.DEVICE).use()
-    #     generator.to_gpu(config.DEVICE)
-    #     embeddings.to_gpu(config.DEVICE)
-    # scorer = MLEGen_Scorer(generator, embeddings, xp)
+    generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+    embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    chainer.serializers.load_npz(args.models[0], generator)
+    chainer.serializers.load_npz(args.models[1], embeddings)
+    if config.DEVICE >= 0:
+        chainer.cuda.get_device_from_id(config.DEVICE).use()
+        generator.to_gpu(config.DEVICE)
+        embeddings.to_gpu(config.DEVICE)
+    scorer = MLEGen_Scorer(generator, embeddings, xp)
 
     run_ranking_test(scorer, vocab_ent, test_data)
 
@@ -93,23 +81,6 @@ class TransE_Scorer(object):
         values = self.xp.linalg.norm(h_emb + r_emb - self.ct_emb, axis=1) # norm value vector with shape of (#entity_num, )
 
         scores = chainer.cuda.to_cpu(values) # cupy doesn't support argsort yet
-        return scores
-
-
-class Generative_Scorer(object):
-    def __init__(self, model, xp):
-        self.xp = xp
-        self.model = model if config.DEVICE < 0 else model.to_gpu(config.DEVICE)
-
-    def set_candidate_t(self, candidate_t):
-        self.bsz = candidate_t.shape[0]
-        self.ct = candidate_t
-
-    def __call__(self, h, r):
-        h = F.broadcast_to(h, self.ct.shape)
-        r = F.broadcast_to(r, self.ct.shape)
-        values = -self.model.predict(h, r, self.ct).reshape(-1)
-        scores = chainer.cuda.to_cpu(values.data)
         return scores
 
 
@@ -168,41 +139,6 @@ class MLEGen_Scorer(object):
         value = -logits
         s = chainer.cuda.to_cpu(value.data)
         return s
-
-
-class Experimental_Scorer(object):
-    def __init__(self, g, d, e, xp):
-        self.g = g if config.DEVICE < 0 else g.to_gpu(config.DEVICE)
-        self.d = d if config.DEVICE < 0 or d is None else d.to_gpu(config.DEVICE)
-        self.e = e if config.DEVICE < 0 or e is None else e.to_gpu(config.DEVICE)
-        self.xp = xp
-
-    def set_candidate_t(self, candidate_t):
-        self.bsz = candidate_t.shape[0]
-        self.ct_emb = self.e.ent(candidate_t)
-
-    def __call__(self, h, r):
-        h_raw = self.e.ent(h).reshape(h.shape[0], -1)   # (1, emb_sz)
-        r_raw = self.e.rel(r).reshape(r.shape[0], -1)   # (1, emb_sz)
-        # d_value = self.get_d_score(h_raw, r_raw)
-        g_value = self.get_g_score(h_raw, r_raw)
-        # value = - d_value - g_value
-        value = -g_value
-        # value = -d_value
-        s = chainer.cuda.to_cpu(value.data)
-        return s
-
-    def get_g_score(self, h_emb, r_emb):
-        logits = self.g(F.concat([h_emb, r_emb])).reshape(-1)
-        # prob = F.softmax(logits)
-        return logits
-
-    def get_d_score(self, h_emb, r_emb):
-        h_emb = F.broadcast_to(h_emb, self.ct_emb.shape)
-        r_emb = F.broadcast_to(r_emb, self.ct_emb.shape)
-        values = self.d(F.concat([h_emb, r_emb, self.ct_emb]))
-        values = values.reshape(-1)
-        return values
 
 
 def run_ranking_test(scorer, vocab_ent, test_data):

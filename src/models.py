@@ -46,9 +46,13 @@ class VarMLP(chainer.ChainList):
 
 class Embeddings(chainer.Chain):
     def __init__(self, emb_sz, ent_num, rel_num):
+        random_range = 6 / math.sqrt(emb_sz)
+        initial_ent_w = np.random.uniform(-random_range, random_range, (ent_num, emb_sz))
+        initial_rel_w = np.random.uniform(-random_range, random_range, (rel_num, emb_sz))
+
         super(Embeddings, self).__init__(
-            ent=L.EmbedID(ent_num, emb_sz),
-            rel=L.EmbedID(rel_num, emb_sz)
+            ent=L.EmbedID(ent_num, emb_sz, initialW=initial_ent_w),
+            rel=L.EmbedID(rel_num, emb_sz, initialW=initial_rel_w)
         )
 
 
@@ -104,14 +108,14 @@ class Generator(chainer.Chain):
         with self.init_scope():
             self.l1 = L.Linear(in_dim * 2, in_dim)
             self.l2 = L.Linear(in_dim, in_dim)
-            self.l3 = L.Linear(in_dim, in_dim)
+            self.l3 = L.Linear(in_dim, ent_num)
 
         self.ent_num = ent_num
         self.rel_num = rel_num
         self.dropout = dropout
 
-    def __call__(self, h_emb, r_emb):
-        h1 = F.tanh(self.l1(F.concat([h_emb, r_emb])))
+    def __call__(self, x):
+        h1 = F.tanh(self.l1(x))
         h1 = F.dropout(h1, self.dropout)
         h2 = F.dropout(F.tanh(self.l2(h1)), self.dropout)
         h3 = self.l3(h2)
