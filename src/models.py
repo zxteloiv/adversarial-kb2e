@@ -26,7 +26,7 @@ class MLP(chainer.Chain):
 
 
 class VarMLP(chainer.ChainList):
-    def __init__(self, layer_dims, dropout=0.9):
+    def __init__(self, layer_dims, dropout=0.1):
         super(VarMLP, self).__init__()
         for i in xrange(len(layer_dims) - 1):
             l = L.Linear(layer_dims[i], layer_dims[i + 1])
@@ -47,15 +47,13 @@ class VarMLP(chainer.ChainList):
 class Embeddings(chainer.Chain):
     def __init__(self, emb_sz, ent_num, rel_num):
         random_range = 6 / math.sqrt(emb_sz)
-        # initial_ent_w = np.random.uniform(-random_range, random_range, (ent_num, emb_sz))
-        # initial_rel_w = np.random.uniform(-random_range, random_range, (rel_num, emb_sz))
-        initial_ent_w = None
-        initial_rel_w = None
+        initial_ent_w = np.random.uniform(-random_range, random_range, (ent_num, emb_sz))
+        initial_rel_w = np.random.uniform(-random_range, random_range, (rel_num, emb_sz))
 
-        super(Embeddings, self).__init__(
-            ent=L.EmbedID(ent_num, emb_sz, initialW=initial_ent_w),
-            rel=L.EmbedID(rel_num, emb_sz, initialW=initial_rel_w)
-        )
+        super(Embeddings, self).__init__()
+        with self.init_scope():
+            self.ent = L.EmbedID(ent_num, emb_sz, initialW=initial_ent_w)
+            self.rel = L.EmbedID(rel_num, emb_sz, initialW=initial_rel_w)
 
 
 class AdaptiveHighwayLayer(chainer.Chain):
@@ -104,24 +102,24 @@ class HighwayNetwork(chainer.ChainList):
 
 
 class Generator(chainer.Chain):
-    def __init__(self, in_dim, ent_num, rel_num, dropout=0.2):
+    def __init__(self, emb_sz, ent_num, rel_num, dropout=0.2):
         # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
         super(Generator, self).__init__()
         with self.init_scope():
-            self.l1 = L.Linear(in_dim * 2, in_dim)
-            self.l2 = L.Linear(in_dim, in_dim)
-            self.l3 = L.Linear(in_dim, ent_num)
+            self.mlp = VarMLP([emb_sz * 2, emb_sz, emb_sz, ent_num], dropout)
+            self.emb = Embeddings(emb_sz, ent_num, rel_num)
 
         self.ent_num = ent_num
         self.rel_num = rel_num
         self.dropout = dropout
 
-    def __call__(self, x):
-        h1 = F.tanh(self.l1(x))
-        h1 = F.dropout(h1, self.dropout)
-        h2 = F.dropout(F.tanh(self.l2(h1)), self.dropout)
-        h3 = self.l3(h2)
-        return h3
+    def __call__(self, h, r):
+        bsz = h.shape[0]
+        h_emb = self.emb.ent(h).reshape(bsz, -1)
+        r_emb = self.emb.rel(r).reshape(bsz, -1)
+
+        logits = self.mlp(F.concat([h_emb, r_emb]))
+        return logits
 
 
 class Discriminator(chainer.Chain):

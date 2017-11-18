@@ -53,7 +53,7 @@ def main():
     # scorer = GAN_Scorer(generator, discriminator, g_embedding, d_embedding, xp)
 
     # MLE Scorer
-    generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
     embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
     chainer.serializers.load_npz(args.models[0], generator)
     chainer.serializers.load_npz(args.models[1], embeddings)
