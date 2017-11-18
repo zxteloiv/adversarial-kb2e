@@ -217,7 +217,7 @@ class MLEGenUpdater(chainer.training.StandardUpdater):
         return ['epoch', 'iteration', 'loss_g', 'elapsed_time']
 
 
-class MLEGenPointwiseUpdater(MLEGenUpdater):
+class MLEGenNNSUpdater(MLEGenUpdater):
     def batch_update(self, h, r, t):
         xp = chainer.cuda.get_array_module(h)
         bsz = h.shape[0]
@@ -237,7 +237,8 @@ class MLEGenPointwiseUpdater(MLEGenUpdater):
 
         chainer.report({'loss_g': loss})
 
-class MLEGenNNUpdater(MLEGenUpdater):
+
+class MLEGenNSUpdater(MLEGenUpdater):
     """MLE Generator with negative sampling"""
     def batch_update(self, h, r, t):
         xp = chainer.cuda.get_array_module(h)
