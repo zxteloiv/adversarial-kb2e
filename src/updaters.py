@@ -237,6 +237,30 @@ class MLEGenPointwiseUpdater(MLEGenUpdater):
 
         chainer.report({'loss_g': loss})
 
+class MLEGenNNUpdater(MLEGenUpdater):
+    """MLE Generator with negative sampling"""
+    def batch_update(self, h, r, t):
+        xp = chainer.cuda.get_array_module(h)
+        bsz = h.shape[0]
+        h_emb = self.emb.ent(h).reshape(bsz, -1)    # (bsz, emb_sz)
+        r_emb = self.emb.rel(r).reshape(bsz, -1)    # (bsz, emb_sz)
+        logits = self.g(F.concat([h_emb, r_emb]))   # (bsz, V)
+
+        loss_pos = F.sigmoid(F.select_item(logits, t.reshape(-1)))
+
+        t_corr = xp.random.randint(1, self.ent_num + 1, size=(bsz, 1)).astype('i')
+        loss_neg_t = F.sigmoid(F.select_item(logits, t_corr.reshape(-1)))
+
+        margin = 0.3 * xp.sign(xp.absolute(t - t_corr)).reshape(-1)
+        loss = F.average(F.relu(loss_pos - loss_neg_t + margin))
+
+        self.g.cleargrads()
+        self.emb.cleargrads()
+        loss.backward()
+        self.get_optimizer('main').update()
+        self.opt_e.update()
+
+        chainer.report({'loss_g': loss})
 
 def batch_multinomial(xp, batch_probs, size):
     """
