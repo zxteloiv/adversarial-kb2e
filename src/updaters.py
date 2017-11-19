@@ -6,9 +6,9 @@ import numpy as np
 import models
 
 
-class AbstractGANUpdator(chainer.training.StandardUpdater):
+class AbstractGANUpdater(chainer.training.StandardUpdater):
     def __init__(self, data_iter, opt_g, opt_d, device, d_epoch, g_epoch):
-        super(AbstractGANUpdator, self).__init__(data_iter, {"opt_g": opt_g, "opt_d": opt_d}, device=device)
+        super(AbstractGANUpdater, self).__init__(data_iter, {"opt_g": opt_g, "opt_d": opt_d}, device=device)
         self.d_epoch = d_epoch
         self.g_epoch = g_epoch
         self.d = opt_d.target
@@ -51,133 +51,46 @@ class AbstractGANUpdator(chainer.training.StandardUpdater):
         return ['epoch', 'iteration', 'elapsed_time']
 
 
-class WGANUpdator(AbstractGANUpdator):
-    def __init__(self, iterator, opt_g, opt_d, device, d_epoch=10, g_epoch=1, penalty_coeff=10):
-        super(WGANUpdator, self).__init__(iterator, opt_g, opt_d, device, d_epoch=d_epoch, g_epoch=g_epoch)
-        self.pen_coeff = penalty_coeff
+class GANUpdater(AbstractGANUpdater):
+    def __init__(self, iterator, opt_g, opt_d, device, d_epoch=10, g_epoch=1):
+        super(GANUpdater, self).__init__(iterator, opt_g, opt_d, device, d_epoch=d_epoch, g_epoch=g_epoch)
+        self.baseline = self.xp.array([0.]).astype('f')
 
     def update_d(self, h, r, t):
-        h_emb = self.g.embed_entity(h)
-        r_emb = self.g.embed_relation(r)
-        t_emb = self.g.embed_entity(t) # batch * embedding
+        t_logits = self.g(h, r)     # batch * embedding(generator output)
+        t_sample = batch_multinomial(self.xp, F.softmax(t_logits), 1)
 
-        t_tilde = self.g(h, r) # batch * embedding(generator output)
+        loss_real = self.d(h, r, t)
+        loss_fake = self.d(h, r, t_sample)
 
-        # sampling
-        epsilon = self.xp.random.uniform(0.0, 1.0, (h.shape[0], 1))
-        t_hat = epsilon * t_emb + (1 - epsilon) * t_tilde
-        delta = 1e-7
-        t_hat_delta = t_hat + delta
-        # t_hat_delta = (epsilon + delta) * t + (1 - epsilon - delta) * t_tilde
-
-        delta_approx = F.sqrt(F.batch_l2_norm_squared(t_hat_delta - t_hat)).reshape(-1, 1)
-        derivative = (self.d(h_emb, r_emb, t_hat_delta) - self.d(h_emb, r_emb, t_hat)) / delta_approx + delta
-        penalty = (F.sqrt(F.batch_l2_norm_squared(derivative)) - 1) ** 2
-        loss_penalty = F.average(penalty) * self.pen_coeff
-
-        loss_gan = F.average(self.d(h_emb, r_emb, t_tilde) - self.d(h_emb, r_emb, t_emb))
-        loss_d = loss_gan + loss_penalty
+        loss_d = F.sum(F.relu(loss_fake + 10. - loss_real))
 
         self.d.cleargrads()
         loss_d.backward()
         self.get_optimizer('opt_d').update()
-        ## weight clipping for lipschitz continuity
-        # for name, param in self.d.namedparams():
-        #     if param.data is None:
-        #         continue
-        #     param.data = xp.clip(param.data, -0.01, 0.01)
-        # print loss_d.data
-
-        self.add_to_report(loss_d=loss_d, loss_gan=loss_gan, loss_penalty=loss_penalty)
-
-    def update_g(self, h, r, t):
-        h_emb, r_emb = self.g.embed_entity(h), self.g.embed_relation(r)
-        t_tilde = self.g(h, r)
-        # loss_supervised = F.batch_l2_norm_squared(t_tilde - self.g.embed_entity(t)).reshape(-1, 1)
-        loss_g = F.average(-self.d(h_emb, r_emb, t_tilde))
-        self.g.cleargrads()
-        loss_g.backward()
-        self.get_optimizer('opt_g').update()
-        self.add_to_report(loss_g=loss_g)
-
-    @staticmethod
-    def get_report_list():
-        return ['epoch', 'iteration', 'loss_g', 'w-distance', 'penalty', 'elapsed_time']
-
-
-class GANUpdater(AbstractGANUpdator):
-    """the most basic GAN"""
-    def __init__(self, data_iter, opt_g, opt_d, opt_eg, opt_ed, ent_num, device, d_epoch, g_epoch=5):
-        super(GANUpdater, self).__init__(data_iter, opt_g, opt_d, device, d_epoch, g_epoch)
-        self.opt_eg = opt_eg
-        self.opt_ed = opt_ed
-        self.g_emb = opt_eg.target
-        self.d_emb = opt_ed.target
-        self.ent_num = ent_num
-
-    def update_d(self, h, r, t):
-        bsz = h.shape[0]
-        h_g_emb, t_g_emb = map(lambda x: self.g_emb.ent(x).reshape(bsz, -1), (h, t))
-        r_g_emb = self.g_emb.rel(r).reshape(bsz, -1)
-        h_d_emb, t_d_emb = map(lambda x: self.d_emb.ent(x).reshape(bsz, -1), (h, t))
-        r_d_emb = self.d_emb.rel(r).reshape(bsz, -1)
-
-        samples, _ = self.sample_g(h_g_emb, r_g_emb)
-        samples_emb = self.d_emb.ent(samples).reshape(bsz, -1)
-
-        # traditional GAN
-        loss_real = -F.log(F.sigmoid(self.d(F.concat((h_d_emb, r_d_emb, t_d_emb)))) + 1e-9)
-        loss_gen = -F.log(1 - F.sigmoid(self.d(F.concat((h_d_emb, r_d_emb, samples_emb)))) + 1e-9)
-        loss_real = F.sum(loss_real)
-        loss_gen = F.sum(loss_gen)
-        loss_d = loss_real + loss_gen
-
-        self.d.cleargrads()
-        self.d_emb.cleargrads()
-        loss_d.backward()
-        self.get_optimizer('opt_d').update()
-        self.opt_ed.update()
-        self.add_to_report(loss_d=loss_d, loss_real=loss_real, loss_gen=loss_gen)
+        self.add_to_report(loss_d=loss_d, loss_real=F.sum(loss_real), loss_fake=F.sum(loss_fake))
 
     def update_g(self, h, r, t):
         bsz = h.shape[0]
-        h_g_emb = self.g_emb.ent(h).reshape(bsz, -1)
-        r_g_emb = self.g_emb.rel(r).reshape(bsz, -1)
-        h_d_emb = self.d_emb.ent(h).reshape(bsz, -1)
-        r_d_emb = self.d_emb.rel(r).reshape(bsz, -1)
+        t_logits = self.g(h, r)
+        t_probs = F.softmax(t_logits)
+        t_sample = batch_multinomial(self.xp, t_probs, 1)   # (bsz, 1)
 
-        samples, probs = self.sample_g(h_g_emb, r_g_emb)
-        sample_probs = F.select_item(probs, samples).reshape(bsz, 1)
+        reward = self.d(h, r, t_sample)
+        eligibility = F.log(F.select_item(F.softmax(t_probs), t_sample.reshape(-1)) + 1e-12).reshape(bsz, -1)
 
-        samples_emb = self.d_emb.ent(samples)
-        reward = F.log(1 - F.sigmoid(self.d(F.concat((h_d_emb, r_d_emb, samples_emb)))) + 1e-9)
-
-        loss_g_adv = reward * F.log(sample_probs + 1e-9)
-        loss_g_adv = F.sum(loss_g_adv)
-
-        logits = self.g(F.concat((h_g_emb, r_g_emb)))
-        loss_g_ce = F.softmax_cross_entropy(logits, t.reshape(-1), normalize=False) * 100
-
-        loss_g = loss_g_adv + loss_g_ce
+        grad_g = -F.sum(eligibility * (reward - F.broadcast_to(self.baseline, reward.shape)))
 
         self.g.cleargrads()
-        self.g_emb.cleargrads()
-        loss_g.backward()
+        grad_g.backward()
         self.get_optimizer('opt_g').update()
-        self.opt_eg.update()
-        self.add_to_report(loss_g=loss_g, loss_g_adv=loss_g_adv, reward=F.sum(reward), loss_g_ce=loss_g_ce)
+        self.baseline = F.average(reward)  # a constant to be used in the next iteration
 
-    def sample_g(self, h_emb, r_emb):
-        bsz = h_emb.shape[0]
-        logits = self.g(F.concat((h_emb, r_emb)))
-        probs = F.softmax(logits, axis=1)
-        samples = batch_multinomial(chainer.cuda.get_array_module(h_emb), probs, 1).reshape(bsz,)
-        return samples, probs
+        self.add_to_report(loss_g=-F.sum(reward), reward=F.sum(reward))
 
     @staticmethod
     def get_report_list():
-        return ['epoch', 'iteration', 'loss_g', 'loss_g_adv', 'reward', 'loss_g_ce',
-                'loss_d', 'loss_real', 'loss_gen', 'elapsed_time']
+        return ['epoch', 'iteration', 'loss_g', 'reward', 'loss_d', 'loss_real', 'loss_fake', 'elapsed_time']
 
 
 class MLEGenUpdater(chainer.training.StandardUpdater):
@@ -263,6 +176,48 @@ class MLEGenNSUpdater(MLEGenUpdater):
 
         chainer.report({'loss_g': loss})
 
+
+class GANPretraining(chainer.training.StandardUpdater):
+    def __init__(self, data_iter, opt_g, opt_d, ent_num, rel_num, margin=1., device=-1):
+        super(GANPretraining, self).__init__(data_iter, opt_g, device=device)
+        self.g = opt_g.target
+        self.d = opt_d.target
+        self.opt_g = opt_g
+        self.opt_d = opt_d
+        self.margin = margin
+        self.ent_num = ent_num
+        self.rel_num = rel_num
+
+    def update_core(self):
+        batch = self.get_iterator('main').__next__()
+        h, r, t = self.converter(batch, self.device)
+        bsz = h.shape[0]
+
+        # train G with softmax-cross-entropy
+        logits = self.g(h, r)
+        loss_g = F.softmax_cross_entropy(logits, t.reshape(-1))
+        self.g.cleargrads()
+        loss_g.backward()
+        self.opt_g.update()
+        chainer.report({'loss_g': loss_g})
+
+        # train D with hinge loss and random negative sampling
+        loss_pos = self.d(h, r, t)
+        xp = chainer.cuda.get_array_module(h)
+        t_neg = xp.random.randint(0, self.ent_num, size=(bsz, 1))
+        loss_neg = self.d(h, r, t_neg)
+        margin = self.margin * xp.sign(xp.absolute(t - t_neg)).reshape(bsz, 1)
+        loss_d = F.sum(F.relu(loss_neg - loss_pos + margin))
+        self.d.cleargrads()
+        loss_d.backward()
+        self.opt_d.update()
+        chainer.report({'loss_d': loss_d})
+
+    @staticmethod
+    def get_report_list():
+        return ['epoch', 'iteration', 'loss_g', 'loss_d', 'elapsed_time']
+
+
 def batch_multinomial(xp, batch_probs, size):
     """
     Sample the multinomial distributions given a batch of probabilities
@@ -287,4 +242,4 @@ def batch_multinomial(xp, batch_probs, size):
     # del log_probs, K_log_probs, noise, nums
     # return nums_t
     # return xp.ones((batch_probs.shape[0], size), dtype=self.xp.int32)
-    return nums  #F.transpose(nums)
+    return F.transpose(nums)    # (K, bsz) -> (bsz, K)

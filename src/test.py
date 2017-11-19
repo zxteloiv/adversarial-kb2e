@@ -9,6 +9,7 @@ import numpy as np
 import config, models
 import corpus.dataset as mod_dataset
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('models', nargs='+')
@@ -36,32 +37,26 @@ def main():
     # chainer.serializers.load_npz(args.models[0], transE)
     # scorer = TransE_Scorer(transE, xp)
 
-    # # GAN testing
-    # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num])
-    # discriminator = models.VarMLP([config.EMBED_SZ * 3, config.EMBED_SZ, config.EMBED_SZ, 1])
-    # g_embedding = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    # d_embedding = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    # chainer.serializers.load_npz(args.models[0], generator)
-    # chainer.serializers.load_npz(args.models[1], discriminator)
-    # chainer.serializers.load_npz(args.models[2], g_embedding)
-    # chainer.serializers.load_npz(args.models[3], d_embedding)
-    # if config.DEVICE >= 0:
-    #     generator.to_gpu(config.DEVICE)
-    #     discriminator.to_gpu(config.DEVICE)
-    #     g_embedding.to_gpu(config.DEVICE)
-    #     d_embedding.to_gpu(config.DEVICE)
-    # scorer = GAN_Scorer(generator, discriminator, g_embedding, d_embedding, xp)
-
-    # MLE Scorer
-    generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
-    embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    # GAN testing
+    generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+    discriminator = models.Discriminator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
     chainer.serializers.load_npz(args.models[0], generator)
-    chainer.serializers.load_npz(args.models[1], embeddings)
+    chainer.serializers.load_npz(args.models[1], discriminator)
     if config.DEVICE >= 0:
-        chainer.cuda.get_device_from_id(config.DEVICE).use()
         generator.to_gpu(config.DEVICE)
-        embeddings.to_gpu(config.DEVICE)
-    scorer = MLEGen_Scorer(generator, embeddings, xp)
+        discriminator.to_gpu(config.DEVICE)
+    scorer = GAN_Scorer(generator, discriminator, xp)
+
+    # # MLE Scorer
+    # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
+    # embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+    # chainer.serializers.load_npz(args.models[0], generator)
+    # chainer.serializers.load_npz(args.models[1], embeddings)
+    # if config.DEVICE >= 0:
+    #     chainer.cuda.get_device_from_id(config.DEVICE).use()
+    #     generator.to_gpu(config.DEVICE)
+    #     embeddings.to_gpu(config.DEVICE)
+    # scorer = MLEGen_Scorer(generator, embeddings, xp)
 
     run_ranking_test(scorer, vocab_ent, test_data)
 
@@ -85,39 +80,32 @@ class TransE_Scorer(object):
 
 
 class GAN_Scorer(object):
-    def __init__(self, g, d, eg, ed, xp):
+    def __init__(self, g, d, xp):
         self.g = g if config.DEVICE < 0 else g.to_gpu(config.DEVICE)
         self.d = d if config.DEVICE < 0 else d.to_gpu(config.DEVICE)
-        self.eg = eg if config.DEVICE < 0 else eg.to_gpu(config.DEVICE)
-        self.ed = ed if config.DEVICE < 0 else ed.to_gpu(config.DEVICE)
         self.xp = xp
 
     def set_candidate_t(self, candidate_t):
         self.bsz = candidate_t.shape[0]
-        self.ct_g_emb = self.eg.ent(candidate_t)
-        self.ct_d_emb = self.ed.ent(candidate_t)
+        self.ct = candidate_t
 
     def __call__(self, h, r):
         d_value = self.get_d_score(h, r)
         g_value = self.get_g_score(h, r)
-        values = -d_value -g_value
+        # values = -d_value -g_value
         # values = -d_value
-        # values = -g_value
+        values = -g_value
         scores = chainer.cuda.to_cpu(values)
         return scores
 
     def get_d_score(self, h, r):
-        h_emb = self.ed.ent(h).reshape(-1)
-        r_emb = self.ed.rel(r).reshape(-1)
-        h_emb = F.broadcast_to(h_emb, (self.bsz,) + h_emb.shape)
-        r_emb = F.broadcast_to(r_emb, (self.bsz,) + r_emb.shape)
-        values = self.d(F.concat((h_emb, r_emb, self.ct_d_emb))).reshape(-1).data
+        h = F.broadcast_to(h, (self.bsz, 1))
+        r = F.broadcast_to(r, (self.bsz, 1))
+        values = self.d(h, r, self.ct).reshape(-1).data
         return values
 
     def get_g_score(self, h, r):
-        h_emb = self.eg.ent(h).reshape(1, -1)
-        r_emb = self.eg.rel(r).reshape(1, -1)
-        t_logits = self.g(F.concat((h_emb, r_emb))).reshape(-1)
+        t_logits = self.g(h, r).reshape(-1)
         values = t_logits
         return values.data
 
