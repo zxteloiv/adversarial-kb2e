@@ -58,13 +58,15 @@ class GANUpdater(AbstractGANUpdater):
         self.margin = margin
 
     def update_d(self, h, r, t):
+        bsz = h.shape[0]
         t_logits = self.g(h, r)     # batch * embedding(generator output)
         t_sample = batch_multinomial(self.xp, F.softmax(t_logits), 1)
 
-        loss_real = self.d(h, r, t)
-        loss_fake = self.d(h, r, t_sample)
+        loss_real = F.sigmoid(self.d(h, r, t))
+        loss_fake = F.sigmoid(self.d(h, r, t_sample))
 
-        loss_d = F.sum(F.relu(loss_fake + self.margin - loss_real))
+        margin = self.margin * self.xp.sign(self.xp.absolute(t - t_sample.data)).reshape(bsz, 1)
+        loss_d = F.sum(F.relu(loss_fake + margin - loss_real))
 
         self.d.cleargrads()
         loss_d.backward()
@@ -74,24 +76,26 @@ class GANUpdater(AbstractGANUpdater):
     def update_g(self, h, r, t):
         bsz = h.shape[0]
         t_logits = self.g(h, r)
-        t_probs = F.softmax(t_logits)
-        t_sample = batch_multinomial(self.xp, t_probs, 1)   # (bsz, 1)
 
-        reward = self.d(h, r, t_sample)
-        eligibility = F.log(F.select_item(F.softmax(t_probs), t_sample.reshape(-1)) + 1e-12).reshape(bsz, -1)
+        gumbel_probs = batch_gumbel_softmax(self.xp, t_logits, .2)
+        loss_g = -F.sum(F.sigmoid(self.d.input_t_as_onehot(h, r, gumbel_probs)))
 
-        grad_g = -F.sum(eligibility * (reward - F.broadcast_to(self.baseline, reward.shape)))
+        # t_probs = F.softmax(t_logits)
+        # t_sample = batch_multinomial(self.xp, t_probs, 1)   # (bsz, 1)
+        # reward = self.d(h, r, t_sample)
+        # eligibility = F.log(F.select_item(F.softmax(t_probs), t_sample.reshape(-1)) + 1e-12).reshape(bsz, -1)
+        # grad_g = -F.sum(eligibility * (reward - F.broadcast_to(self.baseline, reward.shape)))
+        # self.baseline = F.average(reward)  # a constant to be used in the next iteration
 
         self.g.cleargrads()
-        grad_g.backward()
+        loss_g.backward()
         self.get_optimizer('opt_g').update()
-        self.baseline = F.average(reward)  # a constant to be used in the next iteration
 
-        self.add_to_report(loss_g=grad_g, reward=F.sum(reward))
+        self.add_to_report(loss_g=loss_g)
 
     @staticmethod
     def get_report_list():
-        return ['epoch', 'iteration', 'loss_g', 'reward', 'loss_d', 'loss_real', 'loss_fake', 'elapsed_time']
+        return ['epoch', 'iteration', 'loss_g', 'loss_d', 'loss_real', 'loss_fake', 'elapsed_time']
 
 
 class MLEGenUpdater(chainer.training.StandardUpdater):
@@ -244,3 +248,19 @@ def batch_multinomial(xp, batch_probs, size):
     # return nums_t
     # return xp.ones((batch_probs.shape[0], size), dtype=self.xp.int32)
     return F.transpose(nums)    # (K, bsz) -> (bsz, K)
+
+
+def standard_gumbel(xp, shape, eps=1e-15):
+    """sample a standard Gumbel distribution (Gumbel(0, 1))"""
+    U = xp.random.rand(*shape).astype('f')
+    samples = -xp.log(-xp.log(U + eps) + eps)
+    return samples
+
+
+def batch_gumbel_softmax(xp, logits, temperature=1., hard=False):
+    samples = standard_gumbel(xp, logits.shape)
+    y = logits + samples
+    probs = F.softmax(y / temperature)
+    if hard:
+        indmax = F.argmax(probs)
+    return probs

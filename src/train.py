@@ -45,8 +45,8 @@ def adversarial_trainer(argv, ent_num, rel_num, train_iter, valid_iter):
     opt_d = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt_g.setup(generator)
     opt_d.setup(discriminator)
-    opt_d.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY))
-    opt_d.add_hook(chainer.optimizer.GradientHardClipping(-config.GRADIENT_CLIP, config.GRADIENT_CLIP))
+    # opt_d.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY))
+    # opt_d.add_hook(chainer.optimizer.GradientHardClipping(-config.GRADIENT_CLIP, config.GRADIENT_CLIP))
     # opt_g.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY))
 
     updater = updaters.GANUpdater(train_iter, opt_g, opt_d, device=config.DEVICE,

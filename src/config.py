@@ -11,7 +11,7 @@ USE_TINY_CORPUS_NUM = -1  #1000
 
 # training framework conf
 BATCH_SZ = 1000
-OPT_D_EPOCH = 1  # how many epochs are needed for training a discriminator in one iteration
+OPT_D_EPOCH = 5  # how many epochs are needed for training a discriminator in one iteration
 OPT_G_EPOCH = 1  # how many epochs are needed for training a generator in one iteration
 SGD_LR = 0.01  # learning rate for SGD only
 ADAM_ALPHA = 1e-3
@@ -23,11 +23,13 @@ TRAINING_LIMIT = (2000, 'iteration')
 
 # model conf
 EMBED_SZ = 50
-MARGIN = 1.
+MARGIN = .3
 TRANSE_NORM = 1  # L1 norm =1, L2 norm =2
 
 GRADIENT_CLIP = 1.
-WEIGHT_DECAY = .1
+WEIGHT_DECAY = .01
+
+TEMPERATURE = .1
 
 DROPOUT = 0.2
 

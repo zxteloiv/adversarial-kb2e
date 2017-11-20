@@ -125,6 +125,14 @@ class Discriminator(chainer.Chain):
         x = F.concat((h_emb, r_emb, t_emb))
         return self.mlp(x)
 
+    def input_t_as_onehot(self, h, r, t_one_hot):
+        bsz = h.shape[0]
+        h_emb = self.emb.ent(h).reshape(bsz, -1)
+        r_emb = self.emb.ent(r).reshape(bsz, -1)
+        t_emb = F.matmul(t_one_hot, self.emb.ent.W)
+        x = F.concat((h_emb, r_emb, t_emb))
+        return self.mlp(x)
+
 
 class TransE(chainer.Chain):
     def __init__(self, emb_sz, ent_num, rel_num, margin, norm=1):
