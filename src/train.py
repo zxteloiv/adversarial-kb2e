@@ -9,31 +9,32 @@ import corpus.dataset as mod_dataset
 import models
 import updaters
 
-def main():
+
+def main(*argv):
     vocab_ent, vocab_rel = mod_dataset.load_vocab()
     dataset = map(lambda x: mod_dataset.load_corpus(x, vocab_ent, vocab_rel), (config.TRAIN_DATA, config.VALID_DATA))
     train_iter, valid_iter = map(lambda x: chainer.iterators.SerialIterator(x, batch_size=config.BATCH_SZ), dataset)
 
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
 
-    trainer = adversarial_trainer(ent_num, rel_num, train_iter, valid_iter)
-    # trainer = mle_trainer(ent_num, rel_num, train_iter, valid_iter)
+    trainer = adversarial_trainer(argv, ent_num, rel_num, train_iter, valid_iter)
+    # trainer = mle_trainer(argv, ent_num, rel_num, train_iter, valid_iter)
 
     # Exp 1. & 2. TransE with and without negative sampling
     # model = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.MARGIN, config.TRANSE_NORM)
     # model = models.TransENNG(config.EMBED_SZ, ent_num, rel_num, config.MARGIN, config.TRANSE_NORM)
-    # trainer = standard_trainer(model, train_iter, valid_iter)
+    # trainer = standard_trainer(argv, model, train_iter, valid_iter)
     dump_conf(trainer)
     trainer.run()
 
 
-def adversarial_trainer(ent_num, rel_num, train_iter, valid_iter):
+def adversarial_trainer(argv, ent_num, rel_num, train_iter, valid_iter):
     generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
     discriminator = models.Discriminator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
-    if len(sys.argv) > 1:
-        chainer.serializers.load_npz(sys.argv[1], generator)
-    if len(sys.argv) > 2:
-        chainer.serializers.load_npz(sys.argv[2], discriminator)
+    if len(argv) > 1:
+        chainer.serializers.load_npz(argv[1], generator)
+    if len(argv) > 2:
+        chainer.serializers.load_npz(argv[2], discriminator)
 
     if config.DEVICE >= 0:
         chainer.cuda.get_device_from_id(config.DEVICE).use()
@@ -63,13 +64,13 @@ def adversarial_trainer(ent_num, rel_num, train_iter, valid_iter):
     return trainer
 
 
-def mle_trainer(ent_num, rel_num, train_iter, valid_iter):
+def mle_trainer(argv, ent_num, rel_num, train_iter, valid_iter):
     generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
     embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    if len(sys.argv) > 1:
-        chainer.serializers.load_npz(sys.argv[1], generator)
-    if len(sys.argv) > 2:
-        chainer.serializers.load_npz(sys.argv[2], embeddings)
+    if len(argv) > 1:
+        chainer.serializers.load_npz(argv[1], generator)
+    if len(argv) > 2:
+        chainer.serializers.load_npz(argv[2], embeddings)
 
     if config.DEVICE >= 0:
         chainer.cuda.get_device_from_id(config.DEVICE).use()
@@ -96,9 +97,9 @@ def mle_trainer(ent_num, rel_num, train_iter, valid_iter):
     return trainer
 
 
-def standard_trainer(model, train_iter, valid_iter, opt=None):
-    if len(sys.argv) > 1:
-        chainer.serializers.load_npz(sys.argv[1], model)
+def standard_trainer(argv, model, train_iter, valid_iter, opt=None):
+    if len(argv) > 1:
+        chainer.serializers.load_npz(argv[1], model)
 
     if config.DEVICE >= 0:
         chainer.cuda.get_device_from_id(config.DEVICE).use()
@@ -133,4 +134,4 @@ def dump_conf(trainer):
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv)

@@ -52,9 +52,10 @@ class AbstractGANUpdater(chainer.training.StandardUpdater):
 
 
 class GANUpdater(AbstractGANUpdater):
-    def __init__(self, iterator, opt_g, opt_d, device, d_epoch=10, g_epoch=1):
+    def __init__(self, iterator, opt_g, opt_d, device, d_epoch=10, g_epoch=1, margin=10.):
         super(GANUpdater, self).__init__(iterator, opt_g, opt_d, device, d_epoch=d_epoch, g_epoch=g_epoch)
         self.baseline = self.xp.array([0.]).astype('f')
+        self.margin = margin
 
     def update_d(self, h, r, t):
         t_logits = self.g(h, r)     # batch * embedding(generator output)
@@ -63,7 +64,7 @@ class GANUpdater(AbstractGANUpdater):
         loss_real = self.d(h, r, t)
         loss_fake = self.d(h, r, t_sample)
 
-        loss_d = F.sum(F.relu(loss_fake + 10. - loss_real))
+        loss_d = F.sum(F.relu(loss_fake + self.margin - loss_real))
 
         self.d.cleargrads()
         loss_d.backward()
@@ -86,7 +87,7 @@ class GANUpdater(AbstractGANUpdater):
         self.get_optimizer('opt_g').update()
         self.baseline = F.average(reward)  # a constant to be used in the next iteration
 
-        self.add_to_report(loss_g=-F.sum(reward), reward=F.sum(reward))
+        self.add_to_report(loss_g=grad_g, reward=F.sum(reward))
 
     @staticmethod
     def get_report_list():

@@ -109,4 +109,5 @@ out.*
 *.sort
 *.tmp
 tmp.*
+*.csv
 

@@ -11,14 +11,14 @@ USE_TINY_CORPUS_NUM = -1  #1000
 
 # training framework conf
 BATCH_SZ = 1000
-OPT_D_EPOCH = 5  # how many epochs are needed for training a discriminator in one iteration
+OPT_D_EPOCH = 1  # how many epochs are needed for training a discriminator in one iteration
 OPT_G_EPOCH = 1  # how many epochs are needed for training a generator in one iteration
 SGD_LR = 0.01  # learning rate for SGD only
 ADAM_ALPHA = 1e-3
 ADAM_BETA1 = 0.5
 SAMPLE_NUM = 700
 
-SAVE_ITER_INTERVAL = 1000
+SAVE_ITER_INTERVAL = 100
 TRAINING_LIMIT = (2000, 'iteration')
 
 # model conf
@@ -26,7 +26,7 @@ EMBED_SZ = 50
 MARGIN = 1.
 TRANSE_NORM = 1  # L1 norm =1, L2 norm =2
 
-GRADIENT_CLIP = 10.
+GRADIENT_CLIP = 1.
 WEIGHT_DECAY = .1
 
 DROPOUT = 0.2
@@ -42,14 +42,18 @@ def init_data(dataset):
     test_data = os.path.join(data_path, filter(lambda f: 'test' in f, os.listdir(data_path))[0])
     return data_path, train_data, valid_data, test_data
 
+
 DATA_PATH, TRAIN_DATA, VALID_DATA, TEST_DATA = init_data(DATASET_IN_USE)
+
 
 def init_vocab(data_path):
     vocab_ent_filename = os.path.join(data_path, 'vocab_ent.pkl')
     vocab_rel_filename = os.path.join(data_path, 'vocab_rel.pkl')
     return vocab_ent_filename, vocab_rel_filename
 
+
 VOCAB_ENT_FILE, VOCAB_REL_FILE = init_vocab(DATA_PATH)
+
 
 MODEL_PATH = os.path.join(ROOT_PATH, 'model')
 
