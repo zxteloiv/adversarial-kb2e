@@ -1,7 +1,7 @@
 # coding: utf-8
 
 from __future__ import absolute_import
-import os, datetime, sys
+import os, datetime, sys, re
 import chainer
 import chainer.training.extensions as extensions
 import config
@@ -23,6 +23,7 @@ def main():
     # model = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.MARGIN, config.TRANSE_NORM)
     # model = models.TransENNG(config.EMBED_SZ, ent_num, rel_num, config.MARGIN, config.TRANSE_NORM)
     # trainer = standard_trainer(model, train_iter, valid_iter)
+    dump_conf(trainer)
     trainer.run()
 
 
@@ -43,13 +44,13 @@ def adversarial_trainer(ent_num, rel_num, train_iter, valid_iter):
     opt_d = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt_g.setup(generator)
     opt_d.setup(discriminator)
-    # opt_d.add_hook(chainer.optimizer.GradientHardClipping(-config.GRADIENT_CLIP, config.GRADIENT_CLIP))
     opt_d.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY))
+    opt_d.add_hook(chainer.optimizer.GradientHardClipping(-config.GRADIENT_CLIP, config.GRADIENT_CLIP))
     # opt_g.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY))
 
-    # updater = updaters.GANUpdater(train_iter, opt_g, opt_d, device=config.DEVICE,
-    #                               d_epoch=config.OPT_D_EPOCH, g_epoch=config.OPT_G_EPOCH)
-    updater = updaters.GANPretraining(train_iter, opt_g, opt_d, ent_num, rel_num, config.MARGIN, config.DEVICE)
+    updater = updaters.GANUpdater(train_iter, opt_g, opt_d, device=config.DEVICE,
+                                  d_epoch=config.OPT_D_EPOCH, g_epoch=config.OPT_G_EPOCH, margin=config.MARGIN)
+    # updater = updaters.GANPretraining(train_iter, opt_g, opt_d, ent_num, rel_num, config.MARGIN, config.DEVICE)
 
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))
@@ -119,6 +120,17 @@ def standard_trainer(model, train_iter, valid_iter, opt=None):
 
 def get_trainer_out_path():
     return os.path.join(config.MODEL_PATH, datetime.datetime.now().strftime('result-%Y-%m-%d-%H-%M-%S'))
+
+
+def dump_conf(trainer):
+    if not os.path.exists(trainer.out):
+        os.mkdir(trainer.out, 0775)
+    conf_dump = os.path.join(trainer.out, 'conf')
+    with open(conf_dump, 'w') as f:
+        for k in dir(config):
+            if re.match('^[A-Z]', k):
+                f.write("{0} = {1}\n".format(k, getattr(config, k)))
+
 
 if __name__ == "__main__":
     main()
