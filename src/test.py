@@ -13,6 +13,7 @@ import corpus.dataset as mod_dataset
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('models', nargs='+')
+    parser.add_argument('--use-valid', '-v', action='store_true', help="use validation set, otherwise test")
     args = parser.parse_args()
 
     chainer.config.train = False
@@ -58,7 +59,12 @@ def main():
     #     embeddings.to_gpu(config.DEVICE)
     # scorer = MLEGen_Scorer(generator, embeddings, xp)
 
-    run_ranking_test(scorer, vocab_ent, test_data)
+    if args.use_valid:  # use validation set
+        print "validation"
+        run_ranking_test(scorer, vocab_ent, valid_data)
+    else:
+        print "testing"
+        run_ranking_test(scorer, vocab_ent, test_data)
 
 
 class TransE_Scorer(object):
