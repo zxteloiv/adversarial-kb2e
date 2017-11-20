@@ -162,6 +162,9 @@ def run_ranking_test(scorer, vocab_ent, test_data):
             logging.info('%d testing data processed, temp rank: %d, hits10: %d, hits10p: %.4f, avgrank: %.4f' % (
                 count, avgrank, hits10, hits10 * 1.0 / count, avgrank / float(count)))
 
+        if i / 1000 >= 10 and config.EARLY_QUIT_TESTING:
+            break
+
     avgrank /= count * 1.0
     hits10 /= count * 1.0
     print "avgrank:", avgrank, "hits@10:", hits10, "count:", count

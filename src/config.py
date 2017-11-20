@@ -31,6 +31,9 @@ WEIGHT_DECAY = .1
 
 DROPOUT = 0.2
 
+# testing conf
+EARLY_QUIT_TESTING = True
+
 # =============================================================================
 # auto computation for data, configurations listed below are generally forbidden
 
