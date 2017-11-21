@@ -98,9 +98,9 @@ class GAN_Scorer(object):
     def __call__(self, h, r):
         d_value = self.get_d_score(h, r)
         g_value = self.get_g_score(h, r)
-        # values = -d_value -g_value
+        values = -d_value -g_value
         # values = -d_value
-        values = -g_value
+        # values = -g_value
         scores = chainer.cuda.to_cpu(values)
         return scores
 

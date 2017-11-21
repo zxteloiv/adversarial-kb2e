@@ -123,7 +123,7 @@ class Discriminator(chainer.Chain):
         r_emb = self.emb.ent(r).reshape(bsz, -1)
         t_emb = self.emb.ent(t).reshape(bsz, -1)
         x = F.concat((h_emb, r_emb, t_emb))
-        return self.mlp(x)
+        return F.sigmoid(self.mlp(x))
 
     def input_t_as_onehot(self, h, r, t_one_hot):
         bsz = h.shape[0]
@@ -131,7 +131,7 @@ class Discriminator(chainer.Chain):
         r_emb = self.emb.ent(r).reshape(bsz, -1)
         t_emb = F.matmul(t_one_hot, self.emb.ent.W)
         x = F.concat((h_emb, r_emb, t_emb))
-        return self.mlp(x)
+        return F.sigmoid(self.mlp(x))
 
 
 class TransE(chainer.Chain):
@@ -157,6 +157,34 @@ class TransE(chainer.Chain):
         norm = xp.linalg.norm(x, axis=axis) + eps
         norm = xp.expand_dims(norm, axis=axis)
         return x / norm
+
+    def dist(self, h, r, t):
+        bsz = h.shape[0]
+        xp = chainer.cuda.get_array_module(h)
+        h_emb = self.ent_emb(h).reshape(bsz, -1)
+        t_emb = self.ent_emb(t).reshape(bsz, -1)
+        r_emb = self.rel_emb(r).reshape(bsz, -1)
+
+        if self.norm == 1:
+            dis_pos = F.sum(F.absolute(h_emb + r_emb - t_emb), axis=1)
+        else:
+            dis_pos = F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - t_emb))
+
+        return dis_pos.reshape(bsz, -1)
+
+    def dist_one_hot_t(self, h, r, t_one_hot):
+        bsz = h.shape[0]
+        xp = chainer.cuda.get_array_module(h)
+        h_emb = self.ent_emb(h).reshape(bsz, -1)
+        r_emb = self.rel_emb(r).reshape(bsz, -1)
+        t_emb = F.matmul(t_one_hot, self.ent_emb.W)
+
+        if self.norm == 1:
+            dis_pos = F.sum(F.absolute(h_emb + r_emb - t_emb), axis=1)
+        else:
+            dis_pos = F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - t_emb))
+
+        return dis_pos.reshape(bsz, -1)
 
     def __call__(self, h, r, t):
         self.ent_emb.W.data = self.normalize_embedding(self.ent_emb.W.data)

@@ -10,7 +10,7 @@ import models
 import updaters
 
 
-def main(*argv):
+def main(argv):
     vocab_ent, vocab_rel = mod_dataset.load_vocab()
     dataset = map(lambda x: mod_dataset.load_corpus(x, vocab_ent, vocab_rel), (config.TRAIN_DATA, config.VALID_DATA))
     train_iter, valid_iter = map(lambda x: chainer.iterators.SerialIterator(x, batch_size=config.BATCH_SZ), dataset)
@@ -49,9 +49,9 @@ def adversarial_trainer(argv, ent_num, rel_num, train_iter, valid_iter):
     # opt_d.add_hook(chainer.optimizer.GradientHardClipping(-config.GRADIENT_CLIP, config.GRADIENT_CLIP))
     # opt_g.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY))
 
-    updater = updaters.GANUpdater(train_iter, opt_g, opt_d, device=config.DEVICE,
-                                  d_epoch=config.OPT_D_EPOCH, g_epoch=config.OPT_G_EPOCH, margin=config.MARGIN)
-    # updater = updaters.GANPretraining(train_iter, opt_g, opt_d, ent_num, rel_num, config.MARGIN, config.DEVICE)
+    # updater = updaters.GANUpdater(train_iter, opt_g, opt_d, device=config.DEVICE,
+    #                               d_epoch=config.OPT_D_EPOCH, g_epoch=config.OPT_G_EPOCH, margin=config.MARGIN)
+    updater = updaters.GANPretraining(train_iter, opt_g, opt_d, ent_num, rel_num, config.MARGIN, config.DEVICE)
 
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))

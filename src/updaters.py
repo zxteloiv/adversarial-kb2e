@@ -62,11 +62,11 @@ class GANUpdater(AbstractGANUpdater):
         t_logits = self.g(h, r)     # batch * embedding(generator output)
         t_sample = batch_multinomial(self.xp, F.softmax(t_logits), 1)
 
-        loss_real = F.sigmoid(self.d(h, r, t))
-        loss_fake = F.sigmoid(self.d(h, r, t_sample))
+        loss_real = F.log(F.sigmoid(self.d(h, r, t)) + 1e-15)
+        loss_fake = F.log(F.sigmoid(self.d(h, r, t_sample)) + 1e-15)
 
         margin = self.margin * self.xp.sign(self.xp.absolute(t - t_sample.data)).reshape(bsz, 1)
-        loss_d = F.sum(F.relu(loss_fake + margin - loss_real))
+        loss_d = -F.sum(loss_real - loss_fake)
 
         self.d.cleargrads()
         loss_d.backward()
@@ -261,6 +261,4 @@ def batch_gumbel_softmax(xp, logits, temperature=1., hard=False):
     samples = standard_gumbel(xp, logits.shape)
     y = logits + samples
     probs = F.softmax(y / temperature)
-    if hard:
-        indmax = F.argmax(probs)
     return probs
