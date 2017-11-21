@@ -40,7 +40,8 @@ def main():
 
     # GAN testing
     generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
-    discriminator = models.Discriminator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+    # discriminator = models.Discriminator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+    discriminator = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.MARGIN)
     chainer.serializers.load_npz(args.models[0], generator)
     chainer.serializers.load_npz(args.models[1], discriminator)
     if config.DEVICE >= 0:
@@ -98,8 +99,8 @@ class GAN_Scorer(object):
     def __call__(self, h, r):
         d_value = self.get_d_score(h, r)
         g_value = self.get_g_score(h, r)
-        values = -d_value -g_value
-        # values = -d_value
+        # values = d_value -g_value
+        values = d_value
         # values = -g_value
         scores = chainer.cuda.to_cpu(values)
         return scores
@@ -107,7 +108,7 @@ class GAN_Scorer(object):
     def get_d_score(self, h, r):
         h = F.broadcast_to(h, (self.bsz, 1))
         r = F.broadcast_to(r, (self.bsz, 1))
-        values = self.d(h, r, self.ct).reshape(-1).data
+        values = self.d.dist(h, r, self.ct).reshape(-1).data
         return values
 
     def get_g_score(self, h, r):
@@ -146,23 +147,26 @@ def run_ranking_test(scorer, vocab_ent, test_data):
 
     avgrank, hits10, count = 0, 0, 0
     for i, batch in enumerate(data_iter):
-        h, r, t = batch[0] # each one is an array of shape (1, )
-        if config.DEVICE >= 0:
-            h = chainer.dataset.to_device(config.DEVICE, h)
-            r = chainer.dataset.to_device(config.DEVICE, r)
+        try:
+            h, r, t = batch[0] # each one is an array of shape (1, )
+            if config.DEVICE >= 0:
+                h = chainer.dataset.to_device(config.DEVICE, h)
+                r = chainer.dataset.to_device(config.DEVICE, r)
 
-        scores = scorer(h, r)
-        sorted_index = np.argsort(scores)
-        rank = np.where(sorted_index == t[0])[0][0]  # tail ent id 1 ~ maxid, but the sorted index: 0 ~ maxid
-        avgrank += rank
-        hits10 += 1 if rank < 10 else 0
-        count += 1
+            scores = scorer(h, r)
+            sorted_index = np.argsort(scores)
+            rank = np.where(sorted_index == t[0])[0][0]  # tail ent id 1 ~ maxid, but the sorted index: 0 ~ maxid
+            avgrank += rank
+            hits10 += 1 if rank < 10 else 0
+            count += 1
 
-        if i % 1000 == 0:
-            logging.info('%d testing data processed, temp rank: %d, hits10: %d, hits10p: %.4f, avgrank: %.4f' % (
-                count, avgrank, hits10, hits10 * 1.0 / count, avgrank / float(count)))
+            if i % 1000 == 0:
+                logging.info('%d testing data processed, temp rank: %d, hits10: %d, hits10p: %.4f, avgrank: %.4f' % (
+                    count, avgrank, hits10, hits10 * 1.0 / count, avgrank / float(count)))
 
-        if i / 1000 >= 10 and config.EARLY_QUIT_TESTING:
+            if i / 1000 >= 10 and config.EARLY_QUIT_TESTING:
+                break
+        except KeyboardInterrupt:
             break
 
     avgrank /= count * 1.0

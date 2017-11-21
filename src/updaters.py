@@ -60,25 +60,55 @@ class GANUpdater(AbstractGANUpdater):
     def update_d(self, h, r, t):
         bsz = h.shape[0]
         t_logits = self.g(h, r)     # batch * embedding(generator output)
-        t_sample = batch_multinomial(self.xp, F.softmax(t_logits), 1)
+        t_probs = F.softmax(t_logits)
+        t_sample_pos = batch_multinomial(self.xp, t_probs, 5)   # (bsz, K)
+        t_sample_neg = batch_multinomial(self.xp, t_probs, 1)   # (bsz, K)
 
-        loss_real = F.log(F.sigmoid(self.d(h, r, t)) + 1e-15)
-        loss_fake = F.log(F.sigmoid(self.d(h, r, t_sample)) + 1e-15)
+        rank_pos = F.log(self.get_rank(h, r, t, t_sample_pos) + 1e-15)
+        rank_neg = F.log(self.get_rank(h, r, t_sample_neg, t) + 1e-15)
 
-        margin = self.margin * self.xp.sign(self.xp.absolute(t - t_sample.data)).reshape(bsz, 1)
-        loss_d = -F.sum(loss_real - loss_fake)
+        loss_d = -F.sum(rank_pos - rank_neg)
+
+        # loss_d = F.sum(F.relu(self.d.dist(h, r, t) - self.d.dist(h, r, t_sample_neg) + self.d.margin))
 
         self.d.cleargrads()
         loss_d.backward()
         self.get_optimizer('opt_d').update()
-        self.add_to_report(loss_d=loss_d, loss_real=F.sum(loss_real), loss_fake=F.sum(loss_fake))
+        self.add_to_report(loss_d=loss_d, loss_real=F.sum(rank_pos), loss_fake=F.sum(rank_neg))
+
+    def get_rank(self, h, r, t, ct):
+        """
+        Rank a tail entity over a ct set
+
+        :param h: head, (bsz, 1)
+        :param r: relation, (bsz, 1)
+        :param t: tail, (bsz, 1)
+        :param ct: candidate tail, (bsz, K)
+        :return: has shape (bsz, 1 + K)
+        """
+        bsz, K = ct.shape
+        ts = F.concat([t, ct], axis=1)      # (bsz, 1 + K)
+        hh = F.broadcast_to(h, ts.shape)    # (bsz, 1) -> (bsz, 1 + K)
+        rr = F.broadcast_to(r, ts.shape)    # (bsz, 1) -> (bsz, 1 + K)
+
+        hh = hh.reshape(-1, 1)              # (bsz, 1 + K) -> (bsz * (1 + K), 1)
+        rr = rr.reshape(-1, 1)
+        ts = ts.reshape(-1, 1)
+
+        vals = -self.d.dist(hh, rr, ts)     # (bsz * (1 + K), 1)
+        vals = vals.reshape(bsz, -1)        # (bsz * (1 + K), 1) -> (bsz, 1 + K)
+
+        scores = F.softmax(vals, axis=1)
+        scores = F.select_item(scores, self.xp.zeros(shape=(bsz,)).astype('i'))
+        return scores
 
     def update_g(self, h, r, t):
         bsz = h.shape[0]
         t_logits = self.g(h, r)
 
-        gumbel_probs = batch_gumbel_softmax(self.xp, t_logits, .2)
-        loss_g = -F.sum(F.sigmoid(self.d.input_t_as_onehot(h, r, gumbel_probs)))
+        # probs = batch_gumbel_softmax(self.xp, t_logits, .2)
+        probs = F.softmax(t_logits)
+        loss_g = -F.sum(-self.d.dist_one_hot_t(h, r, probs))
 
         # t_probs = F.softmax(t_logits)
         # t_sample = batch_multinomial(self.xp, t_probs, 1)   # (bsz, 1)

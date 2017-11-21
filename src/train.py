@@ -25,12 +25,16 @@ def main(argv):
     # model = models.TransENNG(config.EMBED_SZ, ent_num, rel_num, config.MARGIN, config.TRANSE_NORM)
     # trainer = standard_trainer(argv, model, train_iter, valid_iter)
     dump_conf(trainer)
-    trainer.run()
+    try:
+        trainer.run()
+    except KeyboardInterrupt:
+        pass
 
 
 def adversarial_trainer(argv, ent_num, rel_num, train_iter, valid_iter):
     generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
-    discriminator = models.Discriminator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+    # discriminator = models.Discriminator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+    discriminator = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.MARGIN)
     if len(argv) > 1:
         chainer.serializers.load_npz(argv[1], generator)
     if len(argv) > 2:
@@ -49,9 +53,9 @@ def adversarial_trainer(argv, ent_num, rel_num, train_iter, valid_iter):
     # opt_d.add_hook(chainer.optimizer.GradientHardClipping(-config.GRADIENT_CLIP, config.GRADIENT_CLIP))
     # opt_g.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY))
 
-    # updater = updaters.GANUpdater(train_iter, opt_g, opt_d, device=config.DEVICE,
-    #                               d_epoch=config.OPT_D_EPOCH, g_epoch=config.OPT_G_EPOCH, margin=config.MARGIN)
-    updater = updaters.GANPretraining(train_iter, opt_g, opt_d, ent_num, rel_num, config.MARGIN, config.DEVICE)
+    updater = updaters.GANUpdater(train_iter, opt_g, opt_d, device=config.DEVICE,
+                                  d_epoch=config.OPT_D_EPOCH, g_epoch=config.OPT_G_EPOCH, margin=config.MARGIN)
+    # updater = updaters.GANPretraining(train_iter, opt_g, opt_d, ent_num, rel_num, config.MARGIN, config.DEVICE)
 
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))

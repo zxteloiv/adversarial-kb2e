@@ -9,18 +9,19 @@ import math
 
 
 class VarMLP(chainer.ChainList):
-    def __init__(self, layer_dims, dropout=0.1):
+    def __init__(self, layer_dims, dropout=0.1, activate=None):
         super(VarMLP, self).__init__()
         for i in xrange(len(layer_dims) - 1):
             l = L.Linear(layer_dims[i], layer_dims[i + 1])
             self.add_link(l)
         self.dropout = dropout
+        self.activate = activate if activate is not None else F.tanh
 
     def __call__(self, x):
         hidden = x
         for i, link in enumerate(self.children()):
             if i < len(self) - 1:
-                hidden = F.tanh(link(hidden))
+                hidden = self.activate(link(hidden))
                 hidden = F.dropout(hidden, ratio=self.dropout)
             else:
                 hidden = link(hidden)
