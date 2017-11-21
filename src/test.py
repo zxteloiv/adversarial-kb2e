@@ -14,12 +14,17 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('models', nargs='+')
     parser.add_argument('--use-valid', '-v', action='store_true', help="use validation set, otherwise test")
+    parser.add_argument('--setting', '-s', default='gan', choices=['gan', 'transe', 'mle'])
+    parser.add_argument('--msg', '-m', help='a message to print')
+    parser.add_argument('--alpha', '-a', default=.5, type=float, help='GAN: alpha * d_value + (1-alpha) * g_value')
     args = parser.parse_args()
 
     chainer.config.train = False
 
     vocab_ent, vocab_rel = mod_dataset.load_vocab()
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+
+    logging.info(args.msg)
 
     logging.getLogger().setLevel(logging.INFO)
     logging.info('ent vocab size=%d, rel vocab size=%d' % (len(vocab_ent), len(vocab_rel)))
@@ -33,32 +38,38 @@ def main():
         from chainer.cuda import cupy
         xp = cupy
 
-    # # classical TransE
-    # transE = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.TRANSE_MARGIN, config.TRANSE_NORM)
-    # chainer.serializers.load_npz(args.models[0], transE)
-    # scorer = TransE_Scorer(transE, xp)
+    # classical TransE
+    if args.setting == 'transe':
+        transE = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.MARGIN, config.TRANSE_NORM)
+        chainer.serializers.load_npz(args.models[0], transE)
+        scorer = TransE_Scorer(transE, xp)
 
     # GAN testing
-    generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
-    # discriminator = models.Discriminator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
-    discriminator = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.MARGIN)
-    chainer.serializers.load_npz(args.models[0], generator)
-    chainer.serializers.load_npz(args.models[1], discriminator)
-    if config.DEVICE >= 0:
-        generator.to_gpu(config.DEVICE)
-        discriminator.to_gpu(config.DEVICE)
-    scorer = GAN_Scorer(generator, discriminator, xp)
+    elif args.setting == 'gan':
+        generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+        # discriminator = models.Discriminator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
+        discriminator = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.MARGIN)
+        chainer.serializers.load_npz(args.models[0], generator)
+        chainer.serializers.load_npz(args.models[1], discriminator)
+        if config.DEVICE >= 0:
+            generator.to_gpu(config.DEVICE)
+            discriminator.to_gpu(config.DEVICE)
+        scorer = GAN_Scorer(generator, discriminator, xp, args.alpha)
 
-    # # MLE Scorer
-    # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
-    # embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
-    # chainer.serializers.load_npz(args.models[0], generator)
-    # chainer.serializers.load_npz(args.models[1], embeddings)
-    # if config.DEVICE >= 0:
-    #     chainer.cuda.get_device_from_id(config.DEVICE).use()
-    #     generator.to_gpu(config.DEVICE)
-    #     embeddings.to_gpu(config.DEVICE)
-    # scorer = MLEGen_Scorer(generator, embeddings, xp)
+    # MLE Scorer
+    elif args.setting == 'mle':
+        generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
+        embeddings = models.Embeddings(config.EMBED_SZ, ent_num, rel_num)
+        chainer.serializers.load_npz(args.models[0], generator)
+        chainer.serializers.load_npz(args.models[1], embeddings)
+        if config.DEVICE >= 0:
+            chainer.cuda.get_device_from_id(config.DEVICE).use()
+            generator.to_gpu(config.DEVICE)
+            embeddings.to_gpu(config.DEVICE)
+        scorer = MLEGen_Scorer(generator, embeddings, xp)
+
+    else:
+        scorer = None
 
     if args.use_valid:  # use validation set
         print "validation"
@@ -87,10 +98,11 @@ class TransE_Scorer(object):
 
 
 class GAN_Scorer(object):
-    def __init__(self, g, d, xp):
+    def __init__(self, g, d, xp, alpha=.5):
         self.g = g if config.DEVICE < 0 else g.to_gpu(config.DEVICE)
         self.d = d if config.DEVICE < 0 else d.to_gpu(config.DEVICE)
         self.xp = xp
+        self.alpha = alpha
 
     def set_candidate_t(self, candidate_t):
         self.bsz = candidate_t.shape[0]
@@ -99,8 +111,8 @@ class GAN_Scorer(object):
     def __call__(self, h, r):
         d_value = self.get_d_score(h, r)
         g_value = self.get_g_score(h, r)
-        # values = d_value -g_value
-        values = d_value
+        values = self.alpha * d_value + (1 - self.alpha) * (-g_value)
+        # values = d_value
         # values = -g_value
         scores = chainer.cuda.to_cpu(values)
         return scores
