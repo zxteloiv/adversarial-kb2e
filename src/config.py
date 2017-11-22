@@ -23,7 +23,7 @@ TRAINING_LIMIT = (2000, 'iteration')
 
 # model conf
 EMBED_SZ = 50
-MARGIN = .5
+MARGIN = 1.
 TRANSE_NORM = 1  # L1 norm =1, L2 norm =2
 
 GRADIENT_CLIP = .1
@@ -31,10 +31,7 @@ WEIGHT_DECAY = .01
 
 TEMPERATURE = .1
 
-DROPOUT = 0.2
-
-# testing conf
-EARLY_QUIT_TESTING = True
+DROPOUT = 0.1
 
 # =============================================================================
 # auto computation for data, configurations listed below are generally forbidden

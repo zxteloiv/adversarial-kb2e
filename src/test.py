@@ -17,9 +17,11 @@ def main():
     parser.add_argument('--setting', '-s', default='gan', choices=['gan', 'transe', 'mle'])
     parser.add_argument('--msg', '-m', help='a message to print')
     parser.add_argument('--alpha', '-a', default=.5, type=float, help='GAN: alpha * d_value + (1-alpha) * g_value')
+    parser.add_argument('--full', action='store_true', help='do a full testing')
     args = parser.parse_args()
 
     chainer.config.train = False
+    full_testing = True if args.full else False
 
     vocab_ent, vocab_rel = mod_dataset.load_vocab()
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
@@ -73,10 +75,10 @@ def main():
 
     if args.use_valid:  # use validation set
         print "validation"
-        run_ranking_test(scorer, vocab_ent, valid_data)
+        run_ranking_test(scorer, vocab_ent, valid_data, full_testing=full_testing)
     else:
         print "testing"
-        run_ranking_test(scorer, vocab_ent, test_data)
+        run_ranking_test(scorer, vocab_ent, test_data, full_testing=full_testing)
 
 
 class TransE_Scorer(object):
@@ -148,7 +150,7 @@ class MLEGen_Scorer(object):
         return s
 
 
-def run_ranking_test(scorer, vocab_ent, test_data):
+def run_ranking_test(scorer, vocab_ent, test_data, full_testing=True):
     xp = scorer.xp
 
     data_iter = chainer.iterators.SerialIterator(test_data, batch_size=1, repeat=False, shuffle=False)
@@ -176,7 +178,7 @@ def run_ranking_test(scorer, vocab_ent, test_data):
                 logging.info('%d testing data processed, temp rank: %d, hits10: %d, hits10p: %.4f, avgrank: %.4f' % (
                     count, avgrank, hits10, hits10 * 1.0 / count, avgrank / float(count)))
 
-            if i / 1000 >= 10 and config.EARLY_QUIT_TESTING:
+            if i / 1000 >= 10 and not full_testing:
                 break
         except KeyboardInterrupt:
             break
