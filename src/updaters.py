@@ -52,31 +52,38 @@ class AbstractGANUpdater(chainer.training.StandardUpdater):
 
 
 class GANUpdater(AbstractGANUpdater):
-    def __init__(self, iterator, opt_g, opt_d, device, d_epoch=10, g_epoch=1, margin=10.):
+    def __init__(self, iterator, opt_g, opt_d, device, d_epoch=10, g_epoch=1, margin=10.,
+                 greater_d_value_better=True, dist_based_g=False, dist_based_d=False, sample_num=10):
         super(GANUpdater, self).__init__(iterator, opt_g, opt_d, device, d_epoch=d_epoch, g_epoch=g_epoch)
         self.baseline = self.xp.array([0.]).astype('f')
         self.margin = margin
+        self.greater_d_value_is_better = greater_d_value_better
+        self.distance_based_g = dist_based_d
+        self.distance_based_d = dist_based_g
+        self.K = sample_num
 
     def update_d(self, h, r, t):
         bsz = h.shape[0]
         t_logits = self.g(h, r)     # batch * embedding(generator output)
         t_probs = F.softmax(t_logits)
-        t_sample_pos = batch_multinomial(self.xp, t_probs, 5)   # (bsz, K)
-        t_sample_neg = batch_multinomial(self.xp, t_probs, 1)   # (bsz, K)
 
-        rank_pos = F.log(self.get_rank(h, r, t, t_sample_pos) + 1e-15)
-        rank_neg = F.log(self.get_rank(h, r, t_sample_neg, t) + 1e-15)
+        t_sample_neg = batch_multinomial(self.xp, t_probs, 1)       # (bsz, 1)
+        t_sample_pos = batch_multinomial(self.xp, t_probs, self.K)  # (bsz, K)
+        rank_pos = (self.get_rank(h, r, t, t_sample_pos) + 1e-15)
+        rank_neg = (self.get_rank(h, r, t_sample_neg, t) + 1e-15)
 
         loss_d = -F.sum(rank_pos - rank_neg)
 
+        # self.d.ent_emb.W.data = self.d.normalize_embedding(self.d.ent_emb.W.data)
         # loss_d = F.sum(F.relu(self.d.dist(h, r, t) - self.d.dist(h, r, t_sample_neg) + self.d.margin))
 
         self.d.cleargrads()
         loss_d.backward()
         self.get_optimizer('opt_d').update()
-        self.add_to_report(loss_d=loss_d, loss_real=F.sum(rank_pos), loss_fake=F.sum(rank_neg))
+        # self.add_to_report(loss_d=loss_d, loss_real=F.sum(rank_pos), loss_fake=F.sum(rank_neg))
+        self.add_to_report(loss_d=loss_d)
 
-    def get_rank(self, h, r, t, ct):
+    def get_rank(self, h, r, t, ct, temperature=.2):
         """
         Rank a tail entity over a ct set
 
@@ -95,10 +102,20 @@ class GANUpdater(AbstractGANUpdater):
         rr = rr.reshape(-1, 1)
         ts = ts.reshape(-1, 1)
 
-        vals = -self.d.dist(hh, rr, ts)     # (bsz * (1 + K), 1)
+        vals = self.d.dist(hh, rr, ts)     # (bsz * (1 + K), 1)
         vals = vals.reshape(bsz, -1)        # (bsz * (1 + K), 1) -> (bsz, 1 + K)
+        if not self.greater_d_value_is_better:
+            vals = -vals
 
-        scores = F.softmax(vals, axis=1)
+        if self.distance_based_d:
+            target_val = self.d.dist(h, r, t)  # (bsz, 1)
+            if not self.greater_d_value_is_better:
+                target_val = -target_val
+            target_val = F.broadcast_to(target_val, vals.shape)     # (bsz, 1 + K)
+            dist = F.square(vals - target_val)          # (bsz, 1 + K)
+            vals = dist
+
+        scores = F.softmax(vals / temperature, axis=1)
         scores = F.select_item(scores, self.xp.zeros(shape=(bsz,)).astype('i'))
         return scores
 
@@ -106,15 +123,31 @@ class GANUpdater(AbstractGANUpdater):
         bsz = h.shape[0]
         t_logits = self.g(h, r)
 
-        # probs = batch_gumbel_softmax(self.xp, t_logits, .2)
-        probs = F.softmax(t_logits)
-        loss_g = -F.sum(-self.d.dist_one_hot_t(h, r, probs))
+        probs = batch_gumbel_softmax(self.xp, t_logits, 1.)
+
+        sampleval = self.d.dist_one_hot_t(h, r, probs)  # (bsz, 1)
+        targetval = self.d.dist(h, r, t)                # (bsz, 1)
+        if not self.greater_d_value_is_better:
+            sampleval = -sampleval
+            targetval = -targetval
+
+        if self.distance_based_g:
+            sampledist = F.sqrt(F.square(sampleval - targetval) + 1e-15)  # (bsz, 1)
+            targetdist = F.sqrt(F.square(targetval - targetval) + 1e-15)  # (bsz, 1)
+            probs = F.softmax(F.concat([sampledist, targetdist], axis=1) / .1, axis=1)  # (bsz, 2)
+            ranks = F.select_item(probs, self.xp.zeros(shape=(bsz,)).astype('i'))
+        else:
+            probs = F.softmax(F.concat([sampleval, targetval], axis=1) / .1, axis=1)    # (bsz, 2)
+            ranks = F.select_item(probs, self.xp.zeros(shape=(bsz,)).astype('i'))
+
+        loss_g = -F.sum(ranks)
+
 
         # t_probs = F.softmax(t_logits)
         # t_sample = batch_multinomial(self.xp, t_probs, 1)   # (bsz, 1)
-        # reward = self.d(h, r, t_sample)
+        # reward = self.d.dist(h, r, t_sample)
         # eligibility = F.log(F.select_item(F.softmax(t_probs), t_sample.reshape(-1)) + 1e-12).reshape(bsz, -1)
-        # grad_g = -F.sum(eligibility * (reward - F.broadcast_to(self.baseline, reward.shape)))
+        # loss_g = -F.sum(eligibility * (reward - F.broadcast_to(self.baseline, reward.shape)))
         # self.baseline = F.average(reward)  # a constant to be used in the next iteration
 
         self.g.cleargrads()
@@ -125,7 +158,7 @@ class GANUpdater(AbstractGANUpdater):
 
     @staticmethod
     def get_report_list():
-        return ['epoch', 'iteration', 'loss_g', 'loss_d', 'loss_real', 'loss_fake', 'elapsed_time']
+        return ['epoch', 'iteration', 'loss_g', 'loss_d', 'elapsed_time']
 
 
 class MLEGenUpdater(chainer.training.StandardUpdater):

@@ -45,16 +45,20 @@ def adversarial_trainer(argv, ent_num, rel_num, train_iter, valid_iter):
         generator.to_gpu(config.DEVICE)
         discriminator.to_gpu(config.DEVICE)
 
-    opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
-    opt_d = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
+    # opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
+    # opt_d = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
+    opt_g = chainer.optimizers.RMSpropGraves(config.SGD_LR)
+    opt_d = chainer.optimizers.RMSpropGraves(config.SGD_LR)
     opt_g.setup(generator)
     opt_d.setup(discriminator)
-    # opt_d.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY))
+    opt_d.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY))
     # opt_d.add_hook(chainer.optimizer.GradientHardClipping(-config.GRADIENT_CLIP, config.GRADIENT_CLIP))
-    # opt_g.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY))
+    opt_g.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY))
 
     updater = updaters.GANUpdater(train_iter, opt_g, opt_d, device=config.DEVICE,
-                                  d_epoch=config.OPT_D_EPOCH, g_epoch=config.OPT_G_EPOCH, margin=config.MARGIN)
+                                  d_epoch=config.OPT_D_EPOCH, g_epoch=config.OPT_G_EPOCH, margin=config.MARGIN,
+                                  greater_d_value_better=isinstance(discriminator, models.Discriminator),
+                                  dist_based_g=config.DISTANCE_BASED_G, dist_based_d=config.DISTANCE_BASED_D)
     # updater = updaters.GANPretraining(train_iter, opt_g, opt_d, ent_num, rel_num, config.MARGIN, config.DEVICE)
 
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())

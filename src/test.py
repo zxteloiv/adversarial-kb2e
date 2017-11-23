@@ -26,9 +26,11 @@ def main():
     vocab_ent, vocab_rel = mod_dataset.load_vocab()
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
 
-    logging.info(args.msg)
-
     logging.getLogger().setLevel(logging.INFO)
+    if args.msg:
+        logging.info("*==================*")
+        logging.info(args.msg)
+
     logging.info('ent vocab size=%d, rel vocab size=%d' % (len(vocab_ent), len(vocab_rel)))
     valid_data, test_data = map(lambda f: mod_dataset.load_corpus(f, vocab_ent, vocab_rel),
                                 (config.VALID_DATA, config.TEST_DATA))

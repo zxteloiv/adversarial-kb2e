@@ -11,15 +11,15 @@ USE_TINY_CORPUS_NUM = -1  #1000
 
 # training framework conf
 BATCH_SZ = 1000
-OPT_D_EPOCH = 1  # how many epochs are needed for training a discriminator in one iteration
-OPT_G_EPOCH = 5  # how many epochs are needed for training a generator in one iteration
-SGD_LR = 0.01  # learning rate for SGD only
+OPT_D_EPOCH = 2  # how many epochs are needed for training a discriminator in one iteration
+OPT_G_EPOCH = 2  # how many epochs are needed for training a generator in one iteration
+SGD_LR = 0.00005  # learning rate for SGD only
 ADAM_ALPHA = 1e-3
 ADAM_BETA1 = 0.5
-SAMPLE_NUM = 700
+SAMPLE_NUM = 10
 
 SAVE_ITER_INTERVAL = 100
-TRAINING_LIMIT = (2000, 'iteration')
+TRAINING_LIMIT = (500, 'iteration')
 
 # model conf
 EMBED_SZ = 50
@@ -31,7 +31,11 @@ WEIGHT_DECAY = .01
 
 TEMPERATURE = .1
 
-DROPOUT = 0.1
+DROPOUT = .15
+
+DISTANCE_BASED_D = True
+DISTANCE_BASED_G = False
+
 
 # =============================================================================
 # auto computation for data, configurations listed below are generally forbidden
