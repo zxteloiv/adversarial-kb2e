@@ -69,18 +69,14 @@ class GANUpdater(AbstractGANUpdater):
 
         t_sample_neg = batch_multinomial(self.xp, t_probs, 1)       # (bsz, 1)
         t_sample_pos = batch_multinomial(self.xp, t_probs, self.K)  # (bsz, K)
-        rank_pos = (self.get_rank(h, r, t, t_sample_pos) + 1e-15)
-        rank_neg = (self.get_rank(h, r, t_sample_neg, t) + 1e-15)
+        rank_pos = self.get_rank(h, r, t, t_sample_pos)
+        rank_neg = self.get_rank(h, r, t_sample_neg, t)
 
         loss_d = -F.sum(rank_pos - rank_neg)
-
-        # self.d.ent_emb.W.data = self.d.normalize_embedding(self.d.ent_emb.W.data)
-        # loss_d = F.sum(F.relu(self.d.dist(h, r, t) - self.d.dist(h, r, t_sample_neg) + self.d.margin))
 
         self.d.cleargrads()
         loss_d.backward()
         self.get_optimizer('opt_d').update()
-        # self.add_to_report(loss_d=loss_d, loss_real=F.sum(rank_pos), loss_fake=F.sum(rank_neg))
         self.add_to_report(loss_d=loss_d)
 
     def get_rank(self, h, r, t, ct, temperature=.2):
@@ -112,7 +108,7 @@ class GANUpdater(AbstractGANUpdater):
             if not self.greater_d_value_is_better:
                 target_val = -target_val
             target_val = F.broadcast_to(target_val, vals.shape)     # (bsz, 1 + K)
-            dist = F.square(vals - target_val)          # (bsz, 1 + K)
+            dist = F.sqrt(F.square(vals - target_val) + 1e-18)      # (bsz, 1 + K)
             vals = dist
 
         scores = F.softmax(vals / temperature, axis=1)
