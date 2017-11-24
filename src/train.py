@@ -45,8 +45,8 @@ def adversarial_trainer(argv, ent_num, rel_num, train_iter, valid_iter):
         generator.to_gpu(config.DEVICE)
         discriminator.to_gpu(config.DEVICE)
 
-    opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA)
-    opt_d = chainer.optimizers.Adam(config.ADAM_ALPHA)
+    opt_g = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
+    opt_d = chainer.optimizers.Adam(config.ADAM_ALPHA, config.ADAM_BETA1)
     opt_g.setup(generator)
     opt_d.setup(discriminator)
     opt_d.add_hook(chainer.optimizer.WeightDecay(config.WEIGHT_DECAY))

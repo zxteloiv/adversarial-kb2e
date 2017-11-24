@@ -15,7 +15,7 @@ OPT_D_EPOCH = 1  # how many epochs are needed for training a discriminator in on
 OPT_G_EPOCH = 1  # how many epochs are needed for training a generator in one iteration
 SGD_LR = 1e-4  # learning rate for SGD only
 ADAM_ALPHA = 1e-4
-ADAM_BETA1 = 0.5
+ADAM_BETA1 = 0.9
 SAMPLE_NUM = 10
 
 SAVE_ITER_INTERVAL = 100

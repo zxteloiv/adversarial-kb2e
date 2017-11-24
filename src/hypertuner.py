@@ -5,9 +5,7 @@ import config
 import train
 
 OPTIONS = [
-    ("GRADIENT_CLIP", [.01, .1, 1., 10.]),
-    ("WEIGHT_DECAY", [.01, .1, 1., 10.]),
-    ("MARGIN", [1., 10.]),
+    ("ADAM_BETA1", [.1, .2, .3, .4, .5, .6, .7, .8, .9]),
 ]
 
 
