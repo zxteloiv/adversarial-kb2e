@@ -2,6 +2,8 @@
 
 \usepackage{amsmath}
 \usepackage{lineno,hyperref}
+\usepackage{tabularx}
+\usepackage{booktabs}
 \modulolinenumbers[5]
 
 \journal{Journal of Web Semantics}
@@ -62,7 +64,7 @@ Knowledge Graph \sep{} Representation Learning \sep{} Adversarial Training \sep{
 
 \section{Introduction}
 
-Knowledge graph is an important component in many natural language processing applications nowadays, such as natural language inference, question answering, and task-oriented dialogue generation. One of the fundamental tasks in the field is \emph{representation learning}, which aims to learn a representation for each \emph{entity} and \emph{relation} in a knowledge graph. Consider the following example. The triple \emph{(Leonhard Euler, BornIn, Basel)} is a selected fact from a typical knowledge graph, \emph{WikiData}\footnote{https://www.wikidata.org/}. Representation learning models assign a vectorized representation respectively to the head entity \emph{Leonhard Euler} and the tail entity \emph{Basel}, and some models also give a representation for each relation namely \emph{BornIn} in this example. In general, there must be some characteristics to hold or constraints to meet for these representations, which facilitate other tasks like inference or completion on the knowledge graph.
+Knowledge graph is an important component in many natural language processing applications nowadays, such as natural language inference, question answering, and task-oriented dialogue generation. One of the fundamental tasks in the field is \emph{representation learning}, which aims to learn a representation for each \emph{entity} and \emph{relation} in a knowledge graph. Consider the following example. The triple \emph{(Leonhard Euler, BornIn, Basel)} is a selected fact from a typical knowledge graph, \emph{WikiData}\footnote{https://www.wikidata.org/}. Representation learning models assign a vectorized representation respectively to the head entity \emph{Leonhard Euler} and the tail entity \emph{Basel}, and some models also give a representation for each relation, namely \emph{BornIn} in this example. In general, there must be some characteristics to hold or constraints to meet for these representations, which facilitate other tasks like inference or completion on the knowledge graph.
 
 One of the most popular constraints is the translation assumption. Borders et al.~\cite{TransE2013} first proposed the \emph{TransE} model, in which the representation of a tail entity~$(t)$ could be arithmetically computed by adding the representations of the corresponding head entity~$(h)$ and relation~$(r)$, that is, $h + r \simeq t$. This gives a very concise and beautiful geometric explanation that every relation can move or \emph{translate} an entity embedding into another, and hence its name \emph{TransE}. Specifically, they try to minimize a hinge loss with a predefined margin as follows,
 \[
@@ -73,12 +75,46 @@ where $S$ is the set of triples and $S'$ is the set of negative samples. $f(h, r
 
 The training method above shares the same basic framework with many other work. For instance, \emph{TransR}~\cite{TransR2015} introduces a mapping from the entity space to the relation space, where the scoring functions is $\parallel h M_r + r - t M_r \parallel_2^2 $, and \emph{Neural Tensor Network} (NTN)~\cite{NTN} utilizes a bilinear model and a single layer neural network to achieve impressive results, whose scoring function is $u_r^T \tanh(h^T W_r^{[1:k]}t + V_r[h;t] + b_r)$. The training framework can be viewed as a discriminative model because the key scoring function aims to predict high scores for real possible facts in a knowledge graph while lowers the scores for the sampled negative facts, thus we may expect it to give a reasonable high score for some missing but possible facts at testing time.
 
-On the contrary, there are also generative approaches to model the knowledge graph. It's usually easier for generative models to do semi-supervised learning and anomaly detection. With the revival of neural networks and deep learning, the GAN~\cite{GAN} exploits the high fitting power of neural networks to train a generator alternatively with a discriminator model. 
+Despite the success of these discriminative models, there are two challenges remaining for the problem. First, the negative samples are randomly chosen for training, which can either be completely absurd or indeed authentic. In the former case, the model can differentiate these samples with little effort, while the latter situation will mislead the model to a wrong direction. For example, there are two facts in WikiData \emph{(Leonhard Euler, child, Chistoph Euler)} and \emph{(Leonhard Euler, child, Johann Euler)}, where the two different entities share the same head entity, namely a one-to-many relation. To construct a negative sample, we may simply substituting the tail entity by another absurd entity, say, \emph{Basel}, which yields a triple \emph{(Leonhard Euler, child, Basel)}. The model will receive no improvement because the entity is even a city rather than a person. But if an either child is selected to act as the tail entity for the other triple which further serves as a negative sample, the model will probably get fooled.
 
-% --------------------------------------
-% related work
+The second challenge is more or less subtle. Discrmininative models can give a score to every single new triple, but lacks the ability to predict the entity probablistic distribution in a global view. Since the training data is always incomplete and the true data distribution is unknown, it might be a hard decision for a discrminative model to make that whether a fact is just missing or actually impossible to appear. Things might get even worse due to the ubiquitous presence of the one-to-many relations, as proven by the statistics in Table~\ref{one-to-many}. Because of this reason, many previous work designed delicate neural models~\cite{NTN} and trans-* series models~\cite{TransH2014,TransR2015} to enhance the performance. It's no doubt difficult to design an even more perfect discriminative model. Xiao et al.~\cite{TransG} novelly proposed \emph{TransG} as a generative model to deal with the multi-semantic phenomenon in many one-to-many relations. While it still requires the traslation assumption to hold, TransG inspires us to adopt the generative approach along with its theoritical framework and ability to incorporate complex prior.
 
-\section{Related work}
+\begin{table}
+    \centering
+    \begin{tabular}{ccc}
+        \toprule
+        percentiles & FB15k & WN18 \\
+        \midrule
+        25\% &  1   &  \\
+        50\% &  1   &  \\
+        75\% &  2   &  \\
+        90\% &  5   &  \\
+        99\% &  28  &  \\
+        max & 3590  &  \\
+        \midrule
+        mean &  3.14 & \\
+        count & 153630 & \\
+        standard deviation & 18.36 & \\
+        \bottomrule
+    \end{tabular}
+    \caption{statistics of the number of tail entities given the same head entity and relation pair in the training data}
+\label{one-to-many}
+\end{table}
+
+Taking the above challenges into consideration, we systematically propose an adversarial training method to learn a discriminator and a generator in the meantime. The generator could predict the probability distribution, while the discriminator would still function as previous models.
+
+At the generator side, we discard the translation assumption. For simplicity, we just assume the head and relation are both uniformly distributed, thus concentrate on modeling the conditional probability $p(t\mid h, r)$ and purely generate the tail entity given its head and relation. As the generator is getting better, it would predict better entities which could serve as better negative samples than those randomly chosen ones for the discriminator, thus cures the problem of absurd negative sample.
+
+At the discriminator side, inspired by the idea from IRGAN~\cite{IRGAN}, we build a ranking-based loss which will not take generated samples as complete negative samples but only give them lower rank compared to the positive sample.
+
+We have discussed a lot about the discriminative and generative models. Empirically we know neither one side could completely beat the other. The characteristics of them are quite different and we thus have two very heterogeneous models in the adversarial training setting, which happens to meet the requirement for ensemble learning. Therefore we adopt a simple bagging method between the two only models and receive very impressive results.
+
+Our contributions are thus two-fold:
+\begin{itemize}
+    \item We propose an adversarial ranking training for representation learning of knowledge graph, in order to generate better negative samples and make better use of them.
+    \item To exploit the power of both the generator and discriminator, we propose to use a simple bagging method which beats all the baselines and achieves the best result.
+\end{itemize}
+
 
 % ---------------------------------------
 % method
@@ -86,10 +122,26 @@ On the contrary, there are also generative approaches to model the knowledge gra
 \section{Methods}
 
 % --------------------------------------
+% related work
+
+\section{Related work}
+
+We continues to discuss the related work and make comparisons with our work in this section.
+
+It's usually easier for generative models to do semi-supervised learning and anomaly detection. With the revival of neural networks and deep learning, the GAN~\cite{GAN} exploits the high fitting power of neural networks to train a generator alternatively with a discriminator model. 
+
+TransG use translation assumption, and needs explicit density computation which is not that possible.
+GAN can approach true distribution, blablabla.
+
+% --------------------------------------
 % experiments
 
 \section{Experiments}
 
+% --------------------------------------
+% conclusion
+
+\section{Conclusion}
 
 % --------------------------------------
 \section*{References}
