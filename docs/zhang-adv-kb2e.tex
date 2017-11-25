@@ -1,96 +1,72 @@
-\documentclass[review]{elsarticle}
+\documentclass[twocolumn,a4paper,10pt,review,3p]{elsarticle}
 
 \usepackage{lineno,hyperref}
 \modulolinenumbers[5]
 
-\journal{Journal of \LaTeX\ Templates}
-
-%%%%%%%%%%%%%%%%%%%%%%%
-%% Elsevier bibliography styles
-%%%%%%%%%%%%%%%%%%%%%%%
-%% To change the style, put a % in front of the second line of the current style and
-%% remove the % from the second line of the style you would like to use.
-%%%%%%%%%%%%%%%%%%%%%%%
-
-%% Numbered
-%\bibliographystyle{model1-num-names}
-
-%% Numbered without titles
-%\bibliographystyle{model1a-num-names}
-
-%% Harvard
-%\bibliographystyle{model2-names.bst}\biboptions{authoryear}
-
-%% Vancouver numbered
-%\usepackage{numcompress}\bibliographystyle{model3-num-names}
-
-%% Vancouver name/year
-%\usepackage{numcompress}\bibliographystyle{model4-names}\biboptions{authoryear}
-
-%% APA style
-%\bibliographystyle{model5-names}\biboptions{authoryear}
-
-%% AMA style
-%\usepackage{numcompress}\bibliographystyle{model6-num-names}
+\journal{Journal of Web Semantics}
 
 %% `Elsevier LaTeX' style
 \bibliographystyle{elsarticle-num}
+
 %%%%%%%%%%%%%%%%%%%%%%%
 
 \begin{document}
 
+% =========================================
+% front matter
+
 \begin{frontmatter}
 
-\title{Elsevier \LaTeX\ template\tnoteref{mytitlenote}}
-\tnotetext[mytitlenote]{Fully documented templates are available in the elsarticle package on \href{http://www.ctan.org/tex-archive/macros/latex/contrib/elsarticle}{CTAN}.}
+\title{Adversarial Ranking for Knowledge Graph Representation with Bagging}
 
-%% Group authors per affiliation:
-\author{Elsevier\fnref{myfootnote}}
-\address{Radarweg 29, Amsterdam}
-\fntext[myfootnote]{Since 1880.}
+% ----------------------
+% affiliations
 
-%% or include affiliations in footnotes:
-\author[mymainaddress,mysecondaryaddress]{Elsevier Inc}
-\ead[url]{www.elsevier.com}
+\author[hrbaddress]{Qingsong Meng}
 
-\author[mysecondaryaddress]{Global Customer Service\corref{mycorrespondingauthor}}
-\cortext[mycorrespondingauthor]{Corresponding author}
-\ead{support@elsevier.com}
+\author[ucasaddress,hrbaddress]{Xiang Zhang}
+\ead{xiang.zhang@nlpr.ia.ac.cn} % `ead' stands for email address
 
-\address[mymainaddress]{1600 John F Kennedy Boulevard, Philadelphia}
-\address[mysecondaryaddress]{360 Park Avenue South, New York}
+\author[ucasaddress]{Shizhu He}
+\ead{shizhu.he@nlpr.ia.ac.cn}
+
+\author[ucasaddress]{Jun Zhao\corref{correspondingauthor}}
+\ead{jzhao@nlpr.ia.ac.cn}
+
+\cortext[correspondingauthor]{Corresponding author}
+\address[hrbaddress]{Harbin University of Science and Technology, No.52 Xuefu Road, Nangang District, Harbin, 150080, China}
+\address[ucasaddress]{University of Chinese Academy of Sciences, No.19(A) Yuquan Road, Shijingshan District, Beijing, P.R.China 100049}
+
+% -------------------------
+% abstract + keywords
 
 \begin{abstract}
-This template helps you to create a properly formatted \LaTeX\ manuscript.
+Adversarially training.
 \end{abstract}
 
 \begin{keyword}
-\texttt{elsarticle.cls}\sep \LaTeX\sep Elsevier \sep template
-\MSC[2010] 00-01\sep  99-00
+Knowledge Graph \sep{} Representation Learning \sep{} Adversarial Training \sep{} Bagging
+\MSC[2010] 68T30 \sep{} 68T50
 \end{keyword}
 
 \end{frontmatter}
 
-\linenumbers
+% ==========================================
+% main text
 
-\section{The Elsevier article class}
+\linenumbers{}
 
-\paragraph{Installation} If the document class \emph{elsarticle} is not available on your computer, you can download and install the system package \emph{texlive-publishers} (Linux) or install the \LaTeX\ package \emph{elsarticle} using the package manager of your \TeX\ installation, which is typically \TeX\ Live or Mik\TeX.
+% ------------------------
+% introduction
 
-\paragraph{Usage} Once the package is properly installed, you can use the document class \emph{elsarticle} to create a manuscript. Please make sure that your manuscript follows the guidelines in the Guide for Authors of the relevant journal. It is not necessary to typeset your manuscript in exactly the same way as an article, unless you are submitting to a camera-ready copy (CRC) journal.
+\section{Introduction}
 
-\paragraph{Functionality} The Elsevier article class is based on the standard article class and supports almost all of the functionality of that class. In addition, it features commands and options to format the
-\begin{itemize}
-\item document style
-\item baselineskip
-\item front matter
-\item keywords and MSC codes
-\item theorems, definitions and proofs
-\item lables of enumerations
-\item citation style and labeling.
-\end{itemize}
+Knowledge graph forms an important component in many natural language processing applications nowadays, such as natural language inference, question answering, and task-oriented dialogue generation. One of the fundamental tasks in the field is \emph{representation learning}, which aims to learn a representation for each \emph{entity} and \emph{relation} in a knowledge graph. Consider the following example. The triple \emph{(Leonhard Euler, BornIn, Basel)} is a selected fact from a typical knowledge graph, \emph{WikiData}\footnote{https://www.wikidata.org/}. Representation learning models assign a vectorized representation respectively to the head entity \emph{Leonhard Euler} and the tail entity \emph{Basel}, and some models also give a representation for each relation namely \emph{BornIn} in this case. In general, there are some characteristics to hold or constraints to meet for these representations, which facilitate other tasks like inference or completion on the knowledge graph.
 
-\section{Front matter}
+\paragraph{Translation Assumption} One of the most popular constraints is the translation assumption. 
+
+
+\section{Related work}
 
 The author names and affiliations could be formatted in two ways:
 \begin{enumerate}[(1)]
@@ -99,14 +75,34 @@ The author names and affiliations could be formatted in two ways:
 \end{enumerate}
 See the front matter of this document for examples. You are recommended to conform your choice to the journal you are submitting to.
 
-\section{Bibliography styles}
+\section{Methods}
 
 There are various bibliography styles available. You can select the style of your choice in the preamble of this document. These styles are Elsevier styles based on standard styles like Harvard and Vancouver. Please use Bib\TeX\ to generate your bibliography and include DOIs whenever available.
 
-Here are two sample references: \cite{Feynman1963118,Dirac1953888}.
+Here are two sample references:\cite{Feynman1963118,Dirac1953888}.
+
+\section{Experiments}
 
 \section*{References}
 
-\bibliography{mybibfile}
+\bibliography{adv-kb2e-bibfile}
 
 \end{document}
+
+% ====================================================
+% reference snippets
+
+% \paragraph{Installation} If the document class \emph{elsarticle} is not available on your computer, you can download and install the system package \emph{texlive-publishers} (Linux) or install the \LaTeX\ package \emph{elsarticle} using the package manager of your \TeX\ installation, which is typically \TeX\ Live or Mik\TeX.
+
+% \paragraph{Usage} Once the package is properly installed, you can use the document class \emph{elsarticle} to create a manuscript. Please make sure that your manuscript follows the guidelines in the Guide for Authors of the relevant journal. It is not necessary to typeset your manuscript in exactly the same way as an article, unless you are submitting to a camera-ready copy (CRC) journal.
+
+% \paragraph{Functionality} The Elsevier article class is based on the standard article class and supports almost all of the functionality of that class. In addition, it features commands and options to format the
+% \begin{itemize}
+% \item document style
+% \item baselineskip
+% \item front matter
+% \item keywords and MSC codes
+% \item theorems, definitions and proofs
+% \item lables of enumerations
+% \item citation style and labeling.
+% \end{itemize}
