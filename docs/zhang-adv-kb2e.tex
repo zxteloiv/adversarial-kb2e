@@ -21,7 +21,7 @@
 
 \begin{frontmatter}
 
-\title{Adversarial Ranking for Knowledge Graph Representation with Bagging}
+\title{Adversarial Ranking for Knowledge Graph Representation with Ensemble}
 
 % ----------------------
 % affiliations
@@ -49,7 +49,7 @@ Adversarially training.
 \end{abstract}
 
 \begin{keyword}
-Knowledge Graph \sep{} Representation Learning \sep{} Adversarial Training \sep{} Bagging
+Knowledge Graph \sep{} Representation Learning \sep{} Adversarial Training \sep{} Ensembel Learning
 \MSC[2010] 68T30 \sep{} 68T50
 \end{keyword}
 
@@ -70,24 +70,20 @@ Knowledge graph is an important component in many natural language processing ap
 
 % TODO: avoid using formula but to use graphs instead in introduction
 
-One of the most popular constraints is the translation assumption. Borders et al.~\cite{TransE2013} first proposed the \emph{TransE} model, in which the representation of a tail entity~$(t)$ could be arithmetically computed by adding the representations of the corresponding head entity~$(h)$ and relation~$(r)$, that is, $h + r \simeq t$. This gives a very concise and beautiful geometric explanation that every relation can move or \emph{translate} an entity embedding into another, and hence its name \emph{TransE}. Specifically, they try to minimize a hinge loss with a predefined margin as follows,
-\[
-    \min\sum_{\substack{(h, r, t)\in S,\\ (h^\prime, r, t^\prime)\in S^\prime }}
-        {\left[\gamma + f(h, r, t) - f(h^\prime, r, t^\prime)\right]}_+,
-\]
-where $S$ is the set of triples and $S'$ is the set of negative samples. $f(h, r, t)$ can be viewed as an energy or scoring function which in their case is an L1 or L2 norm of $h + r - t$.
+One of the most popular constraints is the translation assumption. Borders et al.~\cite{TransE2013} first proposed the \emph{TransE} model, in which the representation of a tail entity~$(t)$ could be arithmetically computed by adding the representations of the corresponding head entity~$(h)$ and relation~$(r)$, that is, $h + r \simeq t$. This gives a very concise and beautiful geometric explanation that every relation can move or \emph{translate} an entity embedding into another, and hence its name \emph{TransE}.
+The model is trained by minimize a hinge loss with a predefined margin between the scores of positive and negative samples. The score in TransE is given by an L1 or L2 norm or the vector $h + r - t$, which can be seen as a special scoring (or energy) function.
 
-The training method above shares the same basic framework with many other work. For instance, \emph{TransR}~\cite{TransR2015} introduces a mapping from the entity space to the relation space, where the scoring functions is $\lVert h M_r + r - t M_r \rVert_2^2 $, and \emph{Neural Tensor Network} (NTN)~\cite{NTN} utilizes a bilinear model and a single layer neural network to achieve impressive results, whose scoring function is $u_r^T \tanh(h^T W_r^{[1:k]}t + V_r[h;t] + b_r)$. The training framework can be viewed as a discriminative model because the key scoring function aims to predict high scores for real possible facts in a knowledge graph while lowers the scores for the sampled negative facts, thus we may expect it to give a reasonable high score for some missing but possible facts at testing time.
+These models can be seen as \textbf{discriminative models} that share the same framework but differ in the scoring function. For instance, \emph{TransR}~\cite{TransR2015} introduces a mapping from the entity space to the relation space under the translation assumption, where the scoring functions is $\lVert h M_r + r - t M_r \rVert_2^2 $, and \emph{Neural Tensor Network} (NTN)~\cite{NTN} utilizes a bilinear model and a single layer neural network to construct the scoring function. The key scoring functions within these models aim to predict high scores for real possible facts in a knowledge graph while lower the scores for the sampled negative facts, thus we may expect it to give a reasonably high score for some missing but possible facts at testing time.
 
 Despite the success of these discriminative models, there are two challenges remaining for the problem.
-The first challenge is the improperness of negative sampling, which can be either completely absurd or indeed authentic because of the random-choosing strategy.
-The model can differentiate them with little effort for the absurd samples while the authentic negative samples will mislead the model to a wrong direction. For example, there are two facts in WikiData \emph{(Leonhard Euler, child, Chistoph Euler)} and \emph{(Leonhard Euler, child, Johann Euler)}, where the two different entities share the same head entity, namely a one-to-many relation. To construct a negative sample, we may simply substituting the tail entity by another absurd entity, say, \emph{Basel}, which yields a triple \emph{(Leonhard Euler, child, Basel)}. The model will receive no improvement because the entity is even a city rather than a person. But if an either child is selected to act as the tail entity for the other triple which further serves as a negative sample, the model will probably get fooled.
+The first challenge is the \textbf{improperness of negative sampling}, that the randomly chosen negative samples can be either completely absurd or indeed authentic.
+The model can differentiate with little effort the absurd samples which are therefore useless for training. But the authentic negative samples will fool the model and mislead it towards a wrong direction. For example, there are two facts in WikiData \emph{(Leonhard Euler, child, Chistoph Euler)} and \emph{(Leonhard Euler, child, Johann Euler)}, where the two different entities share the same head entity, namely a one-to-many relation. To construct a negative sample, we may simply substituting the tail entity by another absurd entity, say, \emph{Basel}, which yields a triple \emph{(Leonhard Euler, child, Basel)}. The model will receive no improvement because the entity is even a city rather than a person. But if an either child is selected to act as the tail entity for the other triple which further serves as a negative sample, the model will probably get fooled.
 
 \begin{table}
     \centering
     \begin{tabular}{ccc}
         \toprule
-        percentiles & FB15k & WN18 \\
+        Percentile & FB15k & WN18 \\
         \midrule
         25\% &  1   & 1  \\
         50\% &  1   & 1 \\
@@ -107,7 +103,12 @@ The model can differentiate them with little effort for the absurd samples while
 
 % TODO: directly talk about the challenge, summarize it rather than explain it
 
-The second challenge is the more or less subtle. Discrmininative models can give a score to every single new triple, but lacks the ability to predict the entity probablistic distribution in a global view. Since the training data is always incomplete and the true data distribution is unknown, it might be a hard decision for a discrminative model to make that whether a fact is just missing or actually impossible to appear. Things might get even worse due to the ubiquitous presence of the one-to-many relations, as proven by the statistics in Table~\ref{one-to-many}. To overcome the difficulty, many previous work designed delicate neural models~\cite{NTN} and trans-* series models~\cite{TransH2014,TransR2015} to enhance the performance. It's no doubt difficult to design an even more perfect discriminative model. Xiao et al.~\cite{TransG} novelly proposed \emph{TransG} as a generative model to deal with the multi-semantic phenomenon in many one-to-many relations. While it still requires the traslation assumption to hold, TransG inspires us to adopt the generative approach along with its theoritical framework and ability to incorporate complex prior.
+The second challenge is the \textbf{ubiquitous presence of the one-to-many relations}.
+Statistics in Table~\ref{one-to-many} shows that a large portion of relations from training data shows the one-to-many characteristic.
+As we know, discrmininative models give a score to every single new triple, but lack the ability to predict the entity probablistic distribution in a global view.
+Since the knowledge graph data is always incomplete and the true data distribution is unknown, it might be a hard decision for a discrminative model to make that whether a fact is just missing or actually impossible to appear.
+Things get even worse for the models to give scores to the pervasive one-to-many relations.
+To overcome the difficulty, many previous work designed delicate neural models~\cite{NTN} and trans-* series models~\cite{TransH2014,TransR2015,TransD} to enhance the performance. It's no doubt difficult to design an even more perfect discriminative model. Xiao et al.~\cite{TransG} novelly proposed \emph{TransG} as a generative model to deal with the multi-semantic phenomenon in many one-to-many relations. While it still requires the traslation assumption to hold, TransG inspires us to adopt the generative approach along with its theoritical framework and ability to incorporate complex prior and explain the intrinsic patterns within data.
 
 Taking the above challenges into consideration, we systematically propose an adversarial training method to learn a discriminator and a generator in the meantime. The generator could predict the probability distribution, while the discriminator would still function as previous models.
 
@@ -115,12 +116,12 @@ At the generator side, we discard the translation assumption. For simplicity, we
 
 At the discriminator side, inspired by the idea from IRGAN~\cite{IRGAN}, we build a ranking-based loss which will not take generated samples as complete negative samples but only give them lower rank compared to the positive sample.
 
-We have stated the effects of the discriminative and generative models in this task. We have to note that the generator can do much more than generating negative samples, it has indeed the power to prediction as well as the discrminator. Empirically we know neither model could completely beat the opposite. The characteristics of these two are quite different and we thus have two very heterogeneous models in the adversarial training setting, which happens to meet the requirement for ensemble learning. Therefore we adopt a simple bagging method between the two only models and receive very impressive results.
+We have stated the effects of the discriminative and generative models in this task. We have to note that the generator can do much more than generating negative samples, it has indeed the power to prediction as well as the discrminator. Empirically we know neither model could completely beat the opposite. The characteristics of these two are quite different and we thus have two very heterogeneous models in the adversarial training setting, which happens to meet the requirement for ensemble learning. Therefore we adopt a simple weighted voting method to ensemble the two only models and received very impressive results.
 
 Our contributions are thus two-fold:
 \begin{itemize}
     \item We propose an adversarial ranking training for representation learning of knowledge graph, in order to generate better negative samples and make better use of them.
-    \item To exploit the power of both the generator and discriminator, we propose to use a simple bagging method which beats all the baselines and achieves the best result.
+    \item To exploit the power of both the generator and discriminator, we propose to use a simple ensemble method which beats all the baselines and achieves the best result.
 \end{itemize}
 
 
@@ -129,7 +130,7 @@ Our contributions are thus two-fold:
 
 \section{Methods}
 
-We formulate our adversarial training setting in this section. As stated in the previous section, our model consists of a discrmininator and a generator, which are adversarially trained and exploited together through a bagging method. We report each components in the following subsections.
+We formulate our adversarial training setting in this section. As stated in the previous section, our model consists of a discrmininator and a generator, which are adversarially trained and exploited together through a ensemble method. We report each components in the following subsections.
 
 \subsection{Notations}
 
@@ -166,6 +167,14 @@ We then define the training loss for the discriminator as follows,
 
 Note the parameters of the discrminator only occur inside the expectation term. We can just draw samples from the distribution produced by the generator and feed them to the discrminator, and the optimization algorithm will work as it is intended to do. The orange lines in Figure~\ref{system-overview} illustrate the process.
 
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.35\textwidth]{images/overview.pdf}
+    \caption{Overview of our adversarial training setting. The solid lines indicate the flow of training data and dash lines show the back propagation direction of gradients. Orange lines illustrate the process in which the discrminator uses generated negative samples and maximize the ranking-based objective. Blue lines shows the generator use discrminator as its feedback and propagate the gradient through gumbel softmax~\cite{GumbelSoftmax_Jiang_2016}.}
+\label{system-overview}
+\end{figure}
+
+
 \subsection{Generator}
 
 The generator will output an probabilistic measure of the set of all entities $\mathcal{E}$. We minimize the following cross entropy term defined through the discrminators' feedback,
@@ -179,25 +188,34 @@ The generator will output an probabilistic measure of the set of all entities $\
 
 However, it's not possible to directly optimize the above loss function using gradient-based algorithms. In practice, we have to sample a discrete distribution, which makes a simple reparemeterization trick~\cite{VAE} fail. A popular solution to this problem is to adopt reinforcement learning. The REINFORCE algorithm~\cite{Williams_1992}, for example, reformulates the gradient of the generator objective above but is known to be hard to train and meets the problem of cold start. Furthermore, the gradients it produced tend to have high variance, though a baseline term was added in our experiments.
 
-Since the generator actually gives a multinomial distribution, we adopt the gumbel softmax~\cite{GumbelSoftmax_Jiang_2016} which use gumbel distribution to reparemeterize the multinomial distribution. Specifically, we add standard gumbel noise to the unnormalized log probabilities (logits) and do softmax as follows,
+Since the generator actually gives a multinomial distribution, we adopt the gumbel softmax~\cite{GumbelSoftmax_Jiang_2016} which uses gumbel noise to reparemeterize the multinomial distribution. Specifically, we add standard gumbel noise to the unnormalized log probabilities (logits) and do softmax as follows,
 \begin{align*}
     GumbelProb_i = \frac{\exp((logits_i + z_i)/ \tau)}{\sum_{j}\exp((logits_j + z_j)/ \tau)},
 \end{align*}
 where $z \sim Gumbel(0, 1)$ is the sampled gumbel noise, $logits$ is the output of the generator, and $\tau$ is the positive temperature. As $\tau$ descreases towards 0, the gumbel probability will approximate a one-hot vector sampled from the categorical distribution parameterized by the output logits, which differs from the original gumbel max trick that it is differentiable w.r.t.\ the $logits$. Blue lines in Figure~\ref{system-overview} illustrate the generator learning process, too.
 
-\begin{figure}[ht]
-    \centering
-    \includegraphics[width=0.35\textwidth]{overview.pdf}
-    \caption{Overview of our training method. The solid lines indicate data input and dash lines show the direction of back propagation of gradients. Orange lines illustrate the process in which the discrminator uses generated negative samples and maximize the ranking-based objective. Blue lines shows the generator use discrminator as its feedback and propagate the gradient through gumbel softmax~\cite{GumbelSoftmax_Jiang_2016}.}
-\label{system-overview}
-\end{figure}
 
-\subsection{Pretraining and bagging}
+\subsection{Pretraining and ensemble}
 
-GANs are notoriously hard to train. To overcome this plight, Salimans et al.~\cite{}
+\paragraph{Pretraining} As GANs are hard to train, we introduce a pretraining procedure at first. Note the setting in previous subsections only works when the generator and discrminator are trained adversarially and alternatively. When it comes to the pretraining, we have to design new loss functions for them separately.
 
+To keep things simple, we minimize the cross entropy loss for the generator as below,
+\[
+    \min_g -\sum_{(h, r, t)\in X} p_g(t \mid h, r),
+\]
 
+For the discrmininator, we either use the similar hinge loss with margin as TransE~\cite{TransE2013},
+\[
+    \min_d \sum_{\substack{(h, r, t)\in S,\\ (h^\prime, r, t^\prime)\in S^\prime }}
+        {[ d(h, r, t) - d(h^\prime, r, t^\prime) + \gamma ]}_+,
+\]
+where ${[\cdot]}_+$ denote the hinge loss, $\gamma$ is the margin hyperparameter. $S$ may either denotes the positive or negative samples. If we want the discriminator to give smaller scores for better samples, $S$ is the set of positive samples and $S'$ the set of negative ones, and vice vesa.
 
+\paragraph{Ensemble} Construction of ensemble among base learners is beneficial to performance improvements~\cite{dietterich2000ensemble}. Because of the adversarial training setting, the discrmininator and generator are two heterogeneous models and suitable for ensemble learning. We construct a simple weighted average method to exploits both models,
+\[
+    s(h, r, t) = \alpha d(h, r, t) + (1 - \alpha) p_g(t \mid h, r),
+\]
+where $\alpha$ is a hyperparameter tuned on the validation set.
 
 % --------------------------------------
 % related work
@@ -206,10 +224,21 @@ GANs are notoriously hard to train. To overcome this plight, Salimans et al.~\ci
 
 We continue to discuss the related work and make comparisons with our work in this section.
 
-It's usually easier for generative models to do semi-supervised learning and anomaly detection. With the revival of neural networks and deep learning, the GAN~\cite{GAN} exploits the high fitting power of neural networks to train a generator alternatively with a discriminator model. 
+\paragraph{TransE} As discussed in Section~\ref{sec:intro}, TransE is the representative of models adopting the translation assumption. Specifically, they try to minimize the following hinge loss,
+\[
+    \min\sum_{\substack{(h, r, t)\in S,\\ (h^\prime, r, t^\prime)\in S^\prime }}
+        {\left[\gamma + f(h, r, t) - f(h^\prime, r, t^\prime)\right]}_+,
+\]
+where $S$ is the set of triples and $S'$ is the set of negative samples. $f(h, r, t)$ can be viewed as an energy or scoring function which in their case is an L1 or L2 norm of $h + r - t$.
+
+It's usually easier for generative models to do semi-supervised learning and anomaly detection. With the revival of neural networks and deep learning, the GAN~\cite{GAN} exploits the high fitting power of neural networks to train a generator alternatively with a discriminator model.
 
 TransG use translation assumption, and needs explicit density computation which is not that possible.
-GAN can approach true distribution, blablabla.
+GAN can approach true distribution, blablabla.  as $u_r^T \tanh(h^T W_r^{[1:k]}t + V_r[h;t] + b_r)$
+
+
+
+The training method above shares the same basic framework with many other work. For instance, \emph{TransR}~\cite{TransR2015} introduces a mapping from the entity space to the relation space, where the scoring functions is $\lVert h M_r + r - t M_r \rVert_2^2 $, and \emph{Neural Tensor Network} (NTN)~\cite{NTN} utilizes a bilinear model and a single layer neural network to achieve impressive results, whose scoring function is $u_r^T \tanh(h^T W_r^{[1:k]}t + V_r[h;t] + b_r)$. The training framework can be viewed as a discriminative model because the key scoring function aims to predict high scores for real possible facts in a knowledge graph while lowers the scores for the sampled negative facts, thus we may expect it to give a reasonable high score for some missing but possible facts at testing time.
 
 % --------------------------------------
 % experiments
