@@ -105,7 +105,7 @@ The model can differentiate with little effort the absurd samples which are ther
 
 The second challenge is the \textbf{ubiquitous presence of the one-to-many relations}.
 Statistics in Table~\ref{one-to-many} shows that a large portion of relations from training data shows the one-to-many characteristic.
-As we know, discrmininative models give a score to every single new triple, but lack the ability to predict the entity probablistic distribution in a global view.
+As we know, discrmininative models give a score to every single new triple, but lack the ability to predict the entity probabilistic distribution in a global view.
 Since the knowledge graph data is always incomplete and the true data distribution is unknown, it might be a hard decision for a discrminative model to make that whether a fact is just missing or actually impossible to appear.
 Things get even worse for the models to give scores to the pervasive one-to-many relations.
 To overcome the difficulty, many previous work designed delicate neural models~\cite{NTN} and trans-* series models~\cite{TransH2014,TransR2015,TransD} to enhance the performance. It's no doubt difficult to design an even more perfect discriminative model. Xiao et al.~\cite{TransG} novelly proposed \emph{TransG} as a generative model to deal with the multi-semantic phenomenon in many one-to-many relations. While it still requires the traslation assumption to hold, TransG inspires us to adopt the generative approach along with its theoritical framework and ability to incorporate complex prior and explain the intrinsic patterns within data.
@@ -222,23 +222,28 @@ where $\alpha$ is a hyperparameter tuned on the validation set.
 
 \section{Related work}
 
-We continue to discuss the related work and make comparisons with our work in this section.
+We continue to discuss the work related to ours and make comparisons with them in this section.
 
-\paragraph{TransE} As discussed in Section~\ref{sec:intro}, TransE is the representative of models adopting the translation assumption. Specifically, they try to minimize the following hinge loss,
+\paragraph{Translation models} As discussed in Section~\ref{sec:intro}, TransE~\cite{TransE2013} is a representative model adopting the translation assumption. Specifically, they try to minimize the following hinge loss,
 \[
     \min\sum_{\substack{(h, r, t)\in S,\\ (h^\prime, r, t^\prime)\in S^\prime }}
         {\left[\gamma + f(h, r, t) - f(h^\prime, r, t^\prime)\right]}_+,
 \]
-where $S$ is the set of triples and $S'$ is the set of negative samples. $f(h, r, t)$ can be viewed as an energy or scoring function which in their case is an L1 or L2 norm of $h + r - t$.
+where $S$ is the set of triples and $S'$ is the set of negative samples. $f(h, r, t)$ can be viewed as an energy or scoring function which in their case is an L1 or L2 norm of $h + r - t$. TransH~\cite{TransH2014} extends the basic TransE by projecting entities to the hyperplaned defined by the relation. Let $\omega_r$ be the normal vector of the hyperplane, then the scoring function in TransH is defined as $f(h, r, t) = \lVert(h~-~\omega_r^T h \omega_r) + d_r -~(t~-~\omega_r^T t \omega_r)\rVert_2^2 $.
+TransR~\cite{TransR2015} futher extends the idea by making the relation a complete space rather than a hyperplane in entity space. With a linear mapping between these two spaces, their scoring function is $f(h, r, t) = \lVert hM_r + r - h M_r \rVert_2^2$. These models differ from ours both in its discrmininative nature and the translation assumption.
 
-It's usually easier for generative models to do semi-supervised learning and anomaly detection. With the revival of neural networks and deep learning, the GAN~\cite{GAN} exploits the high fitting power of neural networks to train a generator alternatively with a discriminator model.
+TransG~\cite{TransG} is a generative model and is thus closest to our work. It draws head and tail entities from gaussian distributions, and draw the relation from a mixture of both entities. It uses the Chinese restaurant process to model the relation token implying different semantics, namely the \emph{multi-semantic phenomenon}.
+On the contrary, our model doesn't assume explicit gaussian density, but uses the adversarial framework to approximate the unknown real data distribution, which is a merit of GAN~\cite{Goodfellow_2016}.
 
-TransG use translation assumption, and needs explicit density computation which is not that possible.
-GAN can approach true distribution, blablabla.  as $u_r^T \tanh(h^T W_r^{[1:k]}t + V_r[h;t] + b_r)$
+\paragraph{Neural models} Apart from the translation-based scoring function, Structured Embedding~\cite{bordes2011structured_embedding} is the start of the other approach, which defines the scoring functions using two matrices as $f(h, r, t) = \lVert M_{r,1}h - M_{r,2}t \rVert_{L1}$. Latent Factor Model~\cite{jenatton2012bilinear} uses a bilinear model to characterize the relation between two entities with the scoring function as $f(h, r, t) = h^T W_r t$.
+Single Layer Model is a baseline in Socher et al.~\cite{NTN}, which use one single layer neural network as the scoring function, namely $f(h, r, t)=u_r^T \tanh(W_r[h;t])$. They further propose the most expressive Neural Tensor Network (NTN) model, which utilizes the merits of both the bilinear model and single layer neural network. The scoring function is $u_r^T \tanh(h^T W_r^{[1:k]}t + V_r[h;t] + b_r)$. Due to the large amount of parameters, it's not easy to train NTN on large scale data.
 
+\paragraph{GANs} Then let's move on to the GANs. GAN~\cite{GAN} proposes a vivid explaination of the minimax game between a discriminator and a generator, which sheds the light on the image processing field~\cite{Ledig_2017_CVPR}. However, classic GAN is hard to train~\cite{Salimans_2016}. Through a detailed analysis on the objective, Arjovsky et al.\ proposed Wasserstein GAN~\cite{Arjovsky2017WGAN} which replaces the Jensen-Shannon divergence with the Earth-Mover distance. They also reported new techniques for training~\cite{Gulrajani2017LipschitzReg}, which aims to add penalty into gradients to enforce the Lipschitz constraint.
 
+In the field of natural language processing, SeqGAN~\cite{SeqGAN} is proposed to generate natural language sentences. They also use policy gradient method to backpropagate through discrete sampling. To evaluate the reward of generated sentences in advance, they use Monte Carlo tree search to roll out the whole sentence and use the samples' reward to update in the middle of generation. RankGAN~\cite{RankGAN} futher extends the idea by incorporating the ranking-based loss, which tries to optimize the list-wise ranking of the generated sentence in a candidate list. The recently proposed IRGAN~\cite{IRGAN} nevertheless brings the adversarial training idea into the Information Retrieve field, which unifies both the discriminative and generation schools in a single framework. These models inspired us to use ranking as objective and to combine two models.
 
-The training method above shares the same basic framework with many other work. For instance, \emph{TransR}~\cite{TransR2015} introduces a mapping from the entity space to the relation space, where the scoring functions is $\lVert h M_r + r - t M_r \rVert_2^2 $, and \emph{Neural Tensor Network} (NTN)~\cite{NTN} utilizes a bilinear model and a single layer neural network to achieve impressive results, whose scoring function is $u_r^T \tanh(h^T W_r^{[1:k]}t + V_r[h;t] + b_r)$. The training framework can be viewed as a discriminative model because the key scoring function aims to predict high scores for real possible facts in a knowledge graph while lowers the scores for the sampled negative facts, thus we may expect it to give a reasonable high score for some missing but possible facts at testing time.
+Tramèr et al.~\cite{EnsembleAdvTraining} recently proposed a novel framework called Ensemble Adversarial Training. Along with the progress in using adversarial examples to attack trained models, they propose an extension of GAN that augments training data with perturbation using pretrained models, which is reminiscent of boosting methods in ensemble learning, and differs from our method that adopts the weighted average idea between the heterogeneously trained generator and discrmininator.
+
 
 % --------------------------------------
 % experiments
