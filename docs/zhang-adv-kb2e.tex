@@ -83,31 +83,31 @@ Despite the success of these discriminative models, there are two challenges rem
 The first challenge is the improperness of negative sampling, which can be either completely absurd or indeed authentic because of the random-choosing strategy.
 The model can differentiate them with little effort for the absurd samples while the authentic negative samples will mislead the model to a wrong direction. For example, there are two facts in WikiData \emph{(Leonhard Euler, child, Chistoph Euler)} and \emph{(Leonhard Euler, child, Johann Euler)}, where the two different entities share the same head entity, namely a one-to-many relation. To construct a negative sample, we may simply substituting the tail entity by another absurd entity, say, \emph{Basel}, which yields a triple \emph{(Leonhard Euler, child, Basel)}. The model will receive no improvement because the entity is even a city rather than a person. But if an either child is selected to act as the tail entity for the other triple which further serves as a negative sample, the model will probably get fooled.
 
-% TODO: directly talk about the challenge, summarize it rather than explain it
-
-The second challenge is the more or less subtle. Discrmininative models can give a score to every single new triple, but lacks the ability to predict the entity probablistic distribution in a global view. Since the training data is always incomplete and the true data distribution is unknown, it might be a hard decision for a discrminative model to make that whether a fact is just missing or actually impossible to appear. Things might get even worse due to the ubiquitous presence of the one-to-many relations, as proven by the statistics in Table~\ref{one-to-many}. To overcome the difficulty, many previous work designed delicate neural models~\cite{NTN} and trans-* series models~\cite{TransH2014,TransR2015} to enhance the performance. It's no doubt difficult to design an even more perfect discriminative model. Xiao et al.~\cite{TransG} novelly proposed \emph{TransG} as a generative model to deal with the multi-semantic phenomenon in many one-to-many relations. While it still requires the traslation assumption to hold, TransG inspires us to adopt the generative approach along with its theoritical framework and ability to incorporate complex prior.
-
 \begin{table}
     \centering
     \begin{tabular}{ccc}
         \toprule
         percentiles & FB15k & WN18 \\
         \midrule
-        25\% &  1   &  \\
-        50\% &  1   &  \\
-        75\% &  2   &  \\
-        90\% &  5   &  \\
-        99\% &  28  &  \\
-        max & 3590  &  \\
+        25\% &  1   & 1  \\
+        50\% &  1   & 1 \\
+        75\% &  2   & 1 \\
+        90\% &  5   & 2 \\
+        99\% &  28  & 10 \\
+        max & 3590  &  471 \\
         \midrule
-        mean &  3.14 & \\
-        count & 153630 & \\
-        standard deviation & 18.36 & \\
+        mean &  3.14 & 1.65 \\
+        count & 153630 & 85532 \\
+        standard deviation & 18.36 & 5.08 \\
         \bottomrule
     \end{tabular}
-    \caption{statistics of tail entities given the same head entity and relation pair in the training data}
+    \caption{Statistics of tail entities given the same head entity and relation pair in the training data. Both the FB15k and WN18 dataset have a much greater mean than 1. At least 25\% of FB15k (and 10\% of WN18) distinct pairs of head entity and relation have more than 1 tail entity, which shows the ubiquitous presence of one-to-many relations. }
 \label{one-to-many}
 \end{table}
+
+% TODO: directly talk about the challenge, summarize it rather than explain it
+
+The second challenge is the more or less subtle. Discrmininative models can give a score to every single new triple, but lacks the ability to predict the entity probablistic distribution in a global view. Since the training data is always incomplete and the true data distribution is unknown, it might be a hard decision for a discrminative model to make that whether a fact is just missing or actually impossible to appear. Things might get even worse due to the ubiquitous presence of the one-to-many relations, as proven by the statistics in Table~\ref{one-to-many}. To overcome the difficulty, many previous work designed delicate neural models~\cite{NTN} and trans-* series models~\cite{TransH2014,TransR2015} to enhance the performance. It's no doubt difficult to design an even more perfect discriminative model. Xiao et al.~\cite{TransG} novelly proposed \emph{TransG} as a generative model to deal with the multi-semantic phenomenon in many one-to-many relations. While it still requires the traslation assumption to hold, TransG inspires us to adopt the generative approach along with its theoritical framework and ability to incorporate complex prior.
 
 Taking the above challenges into consideration, we systematically propose an adversarial training method to learn a discriminator and a generator in the meantime. The generator could predict the probability distribution, while the discriminator would still function as previous models.
 
@@ -131,7 +131,7 @@ Our contributions are thus two-fold:
 
 We formulate our adversarial training setting in this section. As stated in the previous section, our model consists of a discrmininator and a generator, which are adversarially trained and exploited together through a bagging method. We report each components in the following subsections.
 
-\subsection{Overview}
+\subsection{Notations}
 
 A knowledge graph $\mathcal{K}$ can be defined as a triple $(\mathcal{E}, \mathcal{R}, \mathcal{F})$, where $\mathcal{E}$ is the set of entities, $\mathcal{R}$ is the set of relations, and $\mathcal{F}$ is the set of facts. Every fact $f\in \mathcal{F}$ is again a triple $(h, r, t), \forall h,t\in\mathcal{E}, r\in\mathcal{R}$. The training data $X$ is a subset of the real facts, $X \subset \mathcal{F}$
 
@@ -155,7 +155,7 @@ In the following we defined the ranking function,
 \end{align*}
 where $t$ is a tail entity from the training data, $\tilde t$ is a tail entity sampled from the generator, $K$ indicates the number of tail entity samples in the ranking list, and $\tau$ is the temperature hyperparameter to control the variance of the softmax function.
 
-We then define the training loss for discriminators as follows,
+We then define the training loss for the discriminator as follows,
 \begin{align*}
     \max_d \sum_{(h, r, t)\in X}
         &\mathbb{E}_{\tilde t_1, \dots, \tilde t_K \sim p_g(t \mid h, r)}
@@ -163,6 +163,8 @@ We then define the training loss for discriminators as follows,
         &- \mathbb{E}_{\tilde t \sim p_g(t \mid h, r)}
             rank_\tau(\tilde t, t)
 \end{align*}
+
+Note the parameters of the discrminator only occur inside the expectation term. We can just draw samples from the distribution produced by the generator and feed them to the discrminator, and the optimization algorithm will work as it is intended to do. The orange lines in Figure~\ref{system-overview} illustrate the process.
 
 \subsection{Generator}
 
@@ -181,7 +183,18 @@ Since the generator actually gives a multinomial distribution, we adopt the gumb
 \begin{align*}
     GumbelProb_i = \frac{\exp((logits_i + z_i)/ \tau)}{\sum_{j}\exp((logits_j + z_j)/ \tau)},
 \end{align*}
-where $z \sim Gumbel(0, 1)$ is the sampled gumbel noise, $logits$ is the output of the generator, and $\tau$ is the positive temperature. As $\tau$ descreases towards 0, the gumbel probability will approximate a one-hot vector sampled from the categorical distribution parameterized by the output logits, which differs from the original gumbel max trick that it is differentiable w.r.t.\ the $logits$.
+where $z \sim Gumbel(0, 1)$ is the sampled gumbel noise, $logits$ is the output of the generator, and $\tau$ is the positive temperature. As $\tau$ descreases towards 0, the gumbel probability will approximate a one-hot vector sampled from the categorical distribution parameterized by the output logits, which differs from the original gumbel max trick that it is differentiable w.r.t.\ the $logits$. Blue lines in Figure~\ref{system-overview} illustrate the generator learning process, too.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.35\textwidth]{overview.pdf}
+    \caption{Overview of our training method. The solid lines indicate data input and dash lines show the direction of back propagation of gradients. Orange lines illustrate the process in which the discrminator uses generated negative samples and maximize the ranking-based objective. Blue lines shows the generator use discrminator as its feedback and propagate the gradient through gumbel softmax~\cite{GumbelSoftmax_Jiang_2016}.}
+\label{system-overview}
+\end{figure}
+
+\subsection{Pretraining and bagging}
+
+GANs are notoriously hard to train. To overcome this plight, Salimans et al.~\cite{}
 
 
 
