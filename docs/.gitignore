@@ -2,9 +2,11 @@
 *.fls
 *.log
 *.out
-*.pdf
 *.spl
 *.gz
 *.fdb_latexmk
 *.bbl
 *.blg
+./*.pdf
+
+zhang-adv-kb2e.pdf
