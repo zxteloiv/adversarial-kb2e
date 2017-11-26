@@ -7,5 +7,6 @@
 *.fdb_latexmk
 *.bbl
 *.blg
+./*.pdf
 
 zhang-adv-kb2e.pdf
