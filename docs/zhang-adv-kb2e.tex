@@ -134,6 +134,7 @@ Our contributions are thus two-fold:
 \end{itemize}
 
 
+
 % ---------------------------------------
 % method
 
@@ -256,23 +257,47 @@ Tram\`er et al.~\cite{EnsembleAdvTraining} recently proposed a novel framework c
 Cai and Wang recently develops a similar KBGAN~\cite{Cai2017KBGAN} model to ours. They focus on using a generator to yield better negative samples for the training of discriminator, which uses a REINFORCE approach to propagate gradient back through stochastic sampling while we adopt the gumbel softmax reparameterization. Their method is flexible at using various models as the discriminator, theoritically even a non-differentiable one because of the power of reinforcement learning. On the contrary, we use GAN together with a ranking loss to deal with both kinds of improper negative samples mentioned in Section~\ref{sec:intro}. Furthermore, we also shows the usefulness of ensemble learning in this setting.
 
 
-
 % --------------------------------------
 % experiments
 
 \section{Experiments}
 
-We conducted our experiments on public datasets, which is extracted from Wordnet and Freebase. Following previous work, we adopt the similar evaluation protocal to do the link prediction and triple classification tasks.
+We conducted our experiments on public datasets, which is extracted from Wordnet and Freebase. Table~\ref{datasets} shows the statistics of the datasets we use. Following previous work, we adopt the similar evaluation protocal to do the link prediction and triple classification tasks.
 
 \subsection{Datasets}
 
-statistics
+\paragraph{WordNet} This graph dataset is actually an important linguistic resources. WordNet~\cite{miller1995wordnet} is organized in \emph{synsets} which groups simiar word senses together, and it also defines the relations between different senses. Typical relations are like hypernym, meronym, etc. We use the dataset version from~\cite{bordes2014SME} where an entity is a synset in WordNet, and relations are those between these synsets. Since there are 18 relations in this dataset, we use WN18 to denote the dataset in this paper. Example triples from this dataset are like \texttt{({\_}{\_}tetraneuris{\_}grandiflora{\_}NN{\_}1, {\_}hypernym, {\_}{\_}wildflower{\_}NN{\_}1)} and \texttt{({\_}{\_}enrich{\_}VB{\_}1, {\_}hyponym, {\_}{\_}fertilize{\_}VB{\_}1)}.
+
+\paragraph{Freebase} This dataset~\cite{bollacker2008freebase} is a large knowledge bases of general facts about the world, which is now closed and merged with WikiData. It has 1.9 billion triple facts in its last version. Due to its popularity, we still use the dataset which is subset of Freebase extracted by~\cite{TransE2013}. There are roughly 15 thousands entities in the set, we therefore denote it with FB15k throughout the paper.
+
+
+\begin{table}
+    \centering
+    \begin{tabular}{crr}
+        \toprule
+        Dataset & FB15k & WN18 \\
+        \midrule
+        entities &  14951   &  40943  \\
+        relations &  1345   & 18 \\
+        training set &  483142   & 141442 \\
+        validation set &  50000   & 5000 \\
+        tesitng set &  59071  & 5000 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Statistics of datasets}
+\label{datasets}
+\end{table}
+
 
 \subsection{Setup}
 
 baselines, implementation details, how to do pretraining, and so on.
 
+\paragraph{Implementations} We use a multi-layer perceptron as our generator. Specifically dimension
+
 \subsection{Link prediction}
+
+
 
 \subsection{Triple classification}
 

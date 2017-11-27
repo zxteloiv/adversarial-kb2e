@@ -1,8 +1,7 @@
 
-@inbook{TransE2013,
+@incollection{TransE2013,
   title = {Translating Embeddings for Modeling Multi-relational Data},
-  booktitle = {Advances in Neural Information Processing Systems 26},
-  publisher = {Curran Associates, Inc.},
+  booktitle = {Advances in Neural Information Processing Systems (NIPS 26)},
   author = {Bordes, Antoine and Usunier, Nicolas and Garcia-Duran, Alberto and Weston, Jason and Yakhnenko, Oksana},
   year = {2013},
   pages = {2787–2795}
@@ -111,3 +110,33 @@ year = {2017}
 
 @article{Cai2017KBGAN, title={KBGAN: Adversarial Learning for Knowledge Graph Embeddings}, url={http://arxiv.org/abs/1711.04071}, abstractNote={We introduce an adversarial learning framework, which we named KBGAN, to improve the performances of a wide range of existing knowledge graph embedding models. Because knowledge graph datasets typically only contain positive facts, sampling useful negative training examples is a non-trivial task. Replacing the head or tail entity of a fact with a uniformly randomly selected entity is a conventional method for generating negative facts used by many previous works, but the majority of negative facts generated in this way can be easily discriminated from positive facts, and will contribute little towards the training. Inspired by generative adversarial networks (GANs), we use one knowledge graph embedding model as a negative sample generator to assist the training of our desired model, which acts as the discriminator in GANs. The objective of the generator is to generate difficult negative samples that can maximize their likeliness determined by the discriminator, while the discriminator minimizes its training loss. This framework is independent of the concrete form of generator and discriminator, and therefore can utilize a wide variety of knowledge graph embedding models as its building blocks. In experiments, we adversarially train two translation-based models, TransE and TransD, each with assistance from one of the two probability-based models, DistMult and ComplEx. We evaluate the performances of KBGAN on the link prediction task, using three knowledge base completion datasets: FB15k-237, WN18 and WN18RR. Experimental results show that adversarial training substantially improves the performances of target embedding models under various settings.}, note={arXiv: 1711.04071}, journal={arXiv:1711.04071 [cs]}, author={Cai, Liwei and Wang, William Yang}, year={2017}, month={Nov}}
 
+@article{bordes2014SME,
+  title={A semantic matching energy function for learning with multi-relational data},
+  author={Bordes, Antoine and Glorot, Xavier and Weston, Jason and Bengio, Yoshua},
+  journal={Machine Learning},
+  volume={94},
+  number={2},
+  pages={233--259},
+  year={2014},
+  publisher={Springer}
+}
+
+@article{miller1995wordnet,
+  title={WordNet: a lexical database for English},
+  author={Miller, George A},
+  journal={Communications of the ACM},
+  volume={38},
+  number={11},
+  pages={39--41},
+  year={1995},
+  publisher={ACM}
+}
+
+@inproceedings{bollacker2008freebase,
+  title={Freebase: a collaboratively created graph database for structuring human knowledge},
+  author={Bollacker, Kurt and Evans, Colin and Paritosh, Praveen and Sturge, Tim and Taylor, Jamie},
+  booktitle={Proceedings of the 2008 ACM SIGMOD international conference on Management of data},
+  pages={1247--1250},
+  year={2008},
+  organization={AcM}
+}
