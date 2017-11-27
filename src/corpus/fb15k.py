@@ -24,10 +24,11 @@ def build_vocab(filename):
 
     return vocab_ent, vocab_rel
 
-if __name__ == "__main__":
+
+def main():
     import config
     import sys
-    if sys.argv[1] == '--debug':
+    if len(sys.argv) > 1 and sys.argv[1] == '--debug':
         logging.getLogger().setLevel(logging.DEBUG)
 
     print "build vocab from file %s" % config.TRAIN_DATA
@@ -35,6 +36,14 @@ if __name__ == "__main__":
     vocab_ent.save(config.VOCAB_ENT_FILE)
     vocab_rel.save(config.VOCAB_REL_FILE)
     print "vocab built successfully at %s and %s" % (config.VOCAB_ENT_FILE, config.VOCAB_REL_FILE)
+
+
+if __name__ == "__main__":
+    import config
+    if config.DATASET_IN_USE.lower() != 'FB15k'.lower():
+        print "The configured dataset is not FB15k, stop building vocabulary"
+    else:
+        main()
 
 
 
