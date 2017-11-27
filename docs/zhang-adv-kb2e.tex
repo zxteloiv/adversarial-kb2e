@@ -1,10 +1,11 @@
-\documentclass[twocolumn,a4paper,10pt,review,5p]{elsarticle}
+\documentclass[twocolumn,a4paper,10pt,preprint,3p]{elsarticle}
 
 \usepackage{amsmath}
 \usepackage{lineno,hyperref}
 \usepackage{tabularx}
 \usepackage{amssymb}
 \usepackage{booktabs}
+\usepackage{multirow}
 \modulolinenumbers[5]
 
 \journal{Journal of Web Semantics}
@@ -21,7 +22,7 @@
 
 \begin{frontmatter}
 
-\title{Adversarial Ranking for Knowledge Graph Representation with Ensemble Construction}
+\title{Adversarial Training for Knowledge Graph Embedding with Ensemble Construction}
 
 % ----------------------
 % affiliations
@@ -52,7 +53,7 @@ Adversarially training.
 \end{abstract}
 
 \begin{keyword}
-Knowledge Graph \sep{} Representation Learning \sep{} Adversarial Training \sep{} Ensembel Learning
+Knowledge Graph \sep{} Representation Learning \sep{} Adversarial Training \sep{} Ensemble Learning
 \MSC[2010] 68T30 \sep{} 68T50
 \end{keyword}
 
@@ -92,7 +93,7 @@ The model can differentiate with little effort the absurd samples which are ther
 
 \begin{table}
     \centering
-    \begin{tabular}{ccc}
+    \begin{tabular}{c|r|r}
         \toprule
         Percentile & FB15k & WN18 \\
         \midrule
@@ -108,7 +109,7 @@ The model can differentiate with little effort the absurd samples which are ther
         standard deviation & 18.36 & 5.08 \\
         \bottomrule
     \end{tabular}
-    \caption{Statistics of tail entities given the same head entity and relation pair in the training data. Both the FB15k and WN18 dataset have a much greater mean than 1. At least 25\% of FB15k (and 10\% of WN18) distinct pairs of head entity and relation have more than 1 tail entity, which shows the ubiquitous presence of one-to-many relations. }
+    \caption{Statistics of tail entities given the same head entity and relation pair in the training data. Both the FB15k and WN18 dataset have a much greater mean than 1. At least 25\% distinct pairs of head entity and relation in FB15k (and at least 10\% in WN18) have more than 1 tail entity, which shows the ubiquitous presence of one-to-many relations. }
 \label{one-to-many}
 \end{table}
 
@@ -125,7 +126,7 @@ At the generator side, we discard the translation assumption. For simplicity, we
 
 At the discriminator side, inspired by the idea from IRGAN~\cite{IRGAN}, we build a ranking-based loss which will not take generated samples as complete negative samples but only give them lower rank compared to the positive sample.
 
-We have talked about the traits of the discriminative and generative models in this task. Note that the generator can do much more than generating negative samples, it also has the power of prediction just like the discrminator. Empirically we know neither model could completely beat the opposite. The characteristics of these two are quite different and we thus have two very heterogeneous models in the adversarial training setting, which happens to meet the requirement for ensemble learning. Therefore we adopt a simple weighted voting method to ensemble the two only models and received very impressive results.
+We have talked about the traits of the discriminative and generative models in this task. Note that the generator can do much more than generating negative samples, it also has the power of prediction just like the discriminator. Empirically we know neither model could completely beat the opposite. The characteristics of these two are quite different and we thus have two very heterogeneous models in the adversarial training setting, which happens to meet the requirement for ensemble learning. Therefore we adopt a simple weighted voting method to ensemble the two only models and received very impressive results.
 
 Our contributions are thus two-fold:
 \begin{itemize}
@@ -144,13 +145,13 @@ We formulate our adversarial training setting in this section. As stated in the 
 
 \subsection{Notations}
 
-A knowledge graph $\mathcal{K}$ can be defined as a triple $(\mathcal{E}, \mathcal{R}, \mathcal{F})$, where $\mathcal{E}$ is the set of entities, $\mathcal{R}$ is the set of relations, and $\mathcal{F}$ is the set of facts. Every fact $f\in \mathcal{F}$ is again a triple $(h, r, t), \forall h,t\in\mathcal{E}, r\in\mathcal{R}$. The training data $X$ is a subset of the real facts, $X \subset \mathcal{F}$
+A knowledge graph $\mathcal{K}$ can be defined as a triple $(\mathcal{E}, \mathcal{R}, \mathcal{F})$, where $\mathcal{E}$ is the set of entities, $\mathcal{R}$ is the set of relations, and $\mathcal{F}$ is the set of facts. Every fact $f\in \mathcal{F}$ is again a triple $(h, r, t), \forall h,t\in\mathcal{E}, r\in\mathcal{R}$. The training data $X$ is a subset of the real facts, $X \subset \mathcal{F}$.
 
-We defined the discrminator $d$ as a scoring function which maps a triple to a scalar, namely $d: \mathcal{F}\rightarrow \mathbb{R}$. The generator on the contrary tries to maximize the joint probability $p(h, r, t)$ which is proportional to the conditional distribution $p_g(t \mid h, r)$. We thus defined the generator as a function $g: \mathcal{E} \times \mathcal{R} \rightarrow \mathbb{R}^{\lvert \mathcal{E} \rvert}$.
+We defined the discriminator $d$ as a scoring function which maps a triple to a scalar, namely $d: \mathcal{F}\rightarrow \mathbb{R}$. The generator on the contrary tries to maximize the joint probability $p(h, r, t)$ which is proportional to the conditional distribution $p_g(t \mid h, r)$. We thus defined the generator as a function $g: \mathcal{E} \times \mathcal{R} \rightarrow \mathbb{R}^{\lvert \mathcal{E} \rvert}$.
 
 \subsection{Discriminator}
 
-As discussed in the Section~\ref{sec:intro}, we use a ranking-based objective when training the discrminator. Here we defined the score distance as follows,
+As discussed in the Section~\ref{sec:intro}, we use a ranking-based objective when training the discriminator. Here we defined the \emph{score distance} as follows,
 \[
     sd(t, t^*; h, r) := \lvert d(h, r, t) - d(h, r, t^*) \rvert,
 \]
@@ -167,34 +168,35 @@ We defined the ranking function as follows,
 where $t$ is a tail entity from the training data, $\tilde t$ is a tail entity sampled from the generator, $K$ indicates the number of tail entity samples in the ranking list, and $\tau$ is the temperature hyperparameter to control the variance of the softmax function.
 
 We then define the training loss for the discriminator as follows,
-\begin{align*}
+\begin{align}
     \max_d \sum_{(h, r, t)\in X}
         &\mathbb{E}_{\tilde t_1, \dots, \tilde t_K \sim p_g(t \mid h, r)}
-            rank_\tau(t, {\{\tilde t \}}_{i=1}^K) \\
+            rank_\tau(t, {\{\tilde t \}}_{i=1}^K) \notag \\
         &- \mathbb{E}_{\tilde t \sim p_g(t \mid h, r)}
-            rank_\tau(\tilde t, t)
-\end{align*}
+            rank_\tau(\tilde t, t) \label{eq:d_loss}
+\end{align}
 
-Note the parameters of the discrminator only occur inside the expectation term. We can just draw samples from the distribution produced by the generator and feed them to the discrminator, and the optimization algorithm will work as it is intended to do. The orange lines in Figure~\ref{system-overview} illustrate the process.
+
+Note the parameters of the discriminator only occur inside the expectation term. We can just draw samples from the distribution produced by the generator and feed them to the discriminator, and the optimization algorithm will work as it is intended to do. The orange lines in Figure~\ref{system-overview} illustrate the process.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=0.35\textwidth]{images/overview.pdf}
-    \caption{Overview of our adversarial training setting. The solid lines indicate the flow of training data and dash lines show the back propagation direction of gradients. Orange lines illustrate the process in which the discrminator uses generated negative samples and maximize the ranking-based objective. Blue lines shows the generator use discrminator as its feedback and propagate the gradient through gumbel softmax~\cite{GumbelSoftmax_Jiang_2016}.}
+    \caption{Overview of our adversarial training setting. The solid lines indicate the flow of training data and dash lines show the back propagation direction of gradients. Orange lines illustrate the process in which the discriminator uses generated negative samples and maximize the ranking-based objective. Blue lines shows the generator use discriminator as its feedback and propagate the gradient through gumbel softmax~\cite{GumbelSoftmax_Jiang_2016}.}
 \label{system-overview}
 \end{figure}
 
 
 \subsection{Generator}
 
-The generator will output an probabilistic measure of the set of all entities $\mathcal{E}$. We minimize the following cross entropy term defined through the discrminators' feedback,
+The generator will output an probabilistic measure of the set of all entities $\mathcal{E}$. We minimize the following cross entropy term defined through the discriminators' feedback,
 
-\begin{align*}
+\begin{align}
     \min_g \sum_{(h, r, t)\in X}
         \mathbb{E}_{\tilde t \sim p_g(t \mid h, r)}
             \frac{\exp(d(h, r, \tilde t) / \tau)}
-                 {\sum_{t^* \in \{ t, \tilde t\}} \exp(d(h, r, t^*) / \tau)}
-\end{align*}
+                 {\sum_{t^* \in \{ t, \tilde t\}} \exp(d(h, r, t^*) / \tau)} \label{eq:g_loss}
+\end{align}
 
 However, it's not possible to directly optimize the above loss function using gradient-based algorithms. In practice, we have to sample a discrete distribution, which makes a simple reparemeterization trick~\cite{VAE} fail. A popular solution to this problem is to adopt reinforcement learning. The REINFORCE algorithm~\cite{Williams_1992}, for example, reformulates the gradient of the generator objective above but is known to be hard to train and meets the problem of cold start. Furthermore, the gradients it produced tend to have high variance, though a baseline term was added in our experiments.
 
@@ -207,24 +209,25 @@ where $z \sim Gumbel(0, 1)$ is the sampled gumbel noise, $logits$ is the output 
 
 \subsection{Pretraining and ensemble}
 
-\paragraph{Pretraining} As GANs are hard to train, we introduce a pretraining procedure at first. Note the setting in previous subsections only works when the generator and discrminator are trained adversarially and alternatively. When it comes to the pretraining, we have to design new loss functions for them separately.
+\paragraph{Pretraining} As GANs are hard to train, we introduce a pretraining procedure at first. Note the setting in previous subsections only works when the generator and discriminator are trained adversarially and alternatively. When it comes to the pretraining, we have to design new loss functions for them separately.
 
 To keep things simple, we minimize the cross entropy loss for the generator as below,
-\[
-    \min_g -\sum_{(h, r, t)\in X} p_g(t \mid h, r),
-\]
+\begin{equation}
+    \min_g \sum_{(h, r, t)\in X} -p_g(t \mid h, r), \label{eq:g_pretrain}
+\end{equation}.
+Because our generator output logits only, we further use softmax to convert the logits to a normalized probability measure.
 
 For the discriminator, we either use the similar hinge loss with margin as TransE~\cite{TransE2013},
-\[
+\begin{equation}
     \min_d \sum_{\substack{(h, r, t)\in S,\\ (h^\prime, r, t^\prime)\in S^\prime }}
-        {[ d(h, r, t) - d(h^\prime, r, t^\prime) + \gamma ]}_+,
-\]
+        {[ d(h, r, t) - d(h^\prime, r, t^\prime) + \gamma ]}_+, \label{eq:d_pretrain}
+\end{equation}
 where ${[\cdot]}_+$ denote the hinge loss, $\gamma$ is the margin hyperparameter. $S$ may either denotes the positive or negative samples. If we want the discriminator to give smaller scores for better samples, $S$ is the set of positive samples and $S'$ the set of negative ones, and vice vesa.
 
 \paragraph{Ensemble} Construction of ensemble among base learners is beneficial to performance improvements~\cite{dietterich2000ensemble}. Because of the adversarial training setting, the discriminator and generator are two heterogeneous models and suitable for ensemble learning. We construct a simple weighted average method to exploits both models,
-\[
-    s(h, r, t) = \alpha d(h, r, t) + (1 - \alpha) p_g(t \mid h, r),
-\]
+\begin{equation}
+    s(h, r, t) = \alpha d(h, r, t) + (1 - \alpha) p_g(t \mid h, r), \label{eq:weighted-ensemble}
+\end{equation}
 where $\alpha$ is a hyperparameter tuned on the validation set.
 
 % --------------------------------------
@@ -235,10 +238,10 @@ where $\alpha$ is a hyperparameter tuned on the validation set.
 We continue to discuss the work related to ours and make comparisons with them in this section.
 
 \paragraph{Translation models} As discussed in Section~\ref{sec:intro}, TransE~\cite{TransE2013} is a representative model adopting the translation assumption. Specifically, they try to minimize the following hinge loss,
-\[
+\begin{equation}
     \min\sum_{\substack{(h, r, t)\in S,\\ (h^\prime, r, t^\prime)\in S^\prime }}
-        {\left[\gamma + f(h, r, t) - f(h^\prime, r, t^\prime)\right]}_+,
-\]
+        {\left[\gamma + f(h, r, t) - f(h^\prime, r, t^\prime)\right]}_+, \label{eq:TransE}
+\end{equation}
 where $S$ is the set of triples and $S'$ is the set of negative samples. $f(h, r, t)$ can be viewed as an energy or scoring function which in their case is an L1 or L2 norm of $h + r - t$. TransH~\cite{TransH2014} extends the basic TransE by projecting entities to the hyperplaned defined by the relation. Let $\omega_r$ be the normal vector of the hyperplane, then the scoring function in TransH is defined as $f(h, r, t) = \lVert(h~-~\omega_r^T h \omega_r) + d_r -~(t~-~\omega_r^T t \omega_r)\rVert_2^2 $.
 TransR~\cite{TransR2015} futher extends the idea by making the relation a complete space rather than a hyperplane in entity space. With a linear mapping between these two spaces, their scoring function is $f(h, r, t) = \lVert hM_r + r - h M_r \rVert_2^2$. These models differ from ours both in its discriminative nature and the translation assumption.
 
@@ -260,18 +263,7 @@ Cai and Wang recently develops a similar KBGAN~\cite{Cai2017KBGAN} model to ours
 % --------------------------------------
 % experiments
 
-\section{Experiments}
-
-We conducted our experiments on public datasets, which is extracted from Wordnet and Freebase. Table~\ref{datasets} shows the statistics of the datasets we use. Following previous work, we adopt the similar evaluation protocal to do the link prediction and triple classification tasks.
-
-\subsection{Datasets}
-
-\paragraph{WordNet} This graph dataset is actually an important linguistic resources. WordNet~\cite{miller1995wordnet} is organized in \emph{synsets} which groups simiar word senses together, and it also defines the relations between different senses. Typical relations are like hypernym, meronym, etc. We use the dataset version from~\cite{bordes2014SME} where an entity is a synset in WordNet, and relations are those between these synsets. Since there are 18 relations in this dataset, we use WN18 to denote the dataset in this paper. Example triples from this dataset are like \texttt{({\_}{\_}tetraneuris{\_}grandiflora{\_}NN{\_}1, {\_}hypernym, {\_}{\_}wildflower{\_}NN{\_}1)} and \texttt{({\_}{\_}enrich{\_}VB{\_}1, {\_}hyponym, {\_}{\_}fertilize{\_}VB{\_}1)}.
-
-\paragraph{Freebase} This dataset~\cite{bollacker2008freebase} is a large knowledge bases of general facts about the world, which is now closed and merged with WikiData. It has 1.9 billion triple facts in its last version. Due to its popularity, we still use the dataset which is subset of Freebase extracted by~\cite{TransE2013}. There are roughly 15 thousands entities in the set, we therefore denote it with FB15k throughout the paper.
-
-
-\begin{table}
+\begin{table}[hbtp]
     \centering
     \begin{tabular}{crr}
         \toprule
@@ -288,15 +280,80 @@ We conducted our experiments on public datasets, which is extracted from Wordnet
 \label{datasets}
 \end{table}
 
+\begin{table*}[ht]
+    \centering
+    \begin{tabular}{c|rr|rr|rr|rr}
+        \toprule
+        \multirow{3}*{Model} & \multicolumn{4}{c|}{FB15k}  & \multicolumn{4}{c}{WN18} \\
+        \cline{2-9}
+            & \multicolumn{2}{c|}{Mean Rank} & \multicolumn{2}{c|}{Hits@10} & \multicolumn{2}{c|}{Mean Rank} & \multicolumn{2}{c}{Hits@10} \\
+        \cline{2-9}
+            & Raw & Filter & Raw & Filter & Raw & Filter & Raw & Filter \\
+        \midrule
+        TransE & 243 & 125 & 34.9 & 47.1 & 263 & 251 & 75.4 & 89.2 \\
+        TransH & 212 & 87 & 45.7 & 64.4 & 401 & 388 & 73.0 & 82.3 \\
+        TransR & 198 & 77 & 48.2 & 68.7 & 238 & 225 & 79.8 & 92.0 \\
+        TransD & 194 & 91 & 53.4 & 77.3 & 224 & 212 & 79.6 & 92.5 \\
+        TransG & 152 & 50 & 55.9 & 88.2 & 357 & 345 & 84.5 & 94.9 \\
+        \midrule
+        TransE-NNS & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+        TransE-Pre & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+        Generator-NNS & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+        Generator-NS & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+        Generator-Pre & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+        Generator-MLE & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+        \midrule
+        % Generator-Adv & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+        % TransE-Adv & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+        AdvE & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+        
+        \bottomrule
+    \end{tabular}
+    \caption{Results of link prediction}
+\label{tab:link-prediction-results}
+\end{table*}
+
+
+\section{Experiments}
+
+
+We conducted our experiments on public datasets, which is extracted from Wordnet and Freebase. Table~\ref{datasets} shows the statistics of the datasets we use. Following previous work, we adopt the similar evaluation protocal to do the link prediction and triple classification tasks.
+
+
+\subsection{Datasets}
+
+\paragraph{WordNet} This graph dataset is actually an important linguistic resources. WordNet~\cite{miller1995wordnet} is organized in \emph{synsets} which groups simiar word senses together, and it also defines the relations between different senses. Typical relations are like hypernym, meronym, etc. We use the dataset version from~\cite{bordes2014SME} where an entity is a synset in WordNet, and relations are those between these synsets. Since there are 18 relations in this dataset, we use WN18 to denote the dataset in this paper. Example triples from this dataset are like \texttt{({\_}{\_}tetraneuris{\_}grandiflora{\_}NN{\_}1, {\_}hypernym, {\_}{\_}wildflower{\_}NN{\_}1)} and \texttt{({\_}{\_}enrich{\_}VB{\_}1, {\_}hyponym, {\_}{\_}fertilize{\_}VB{\_}1)}.
+
+\paragraph{Freebase} This dataset~\cite{bollacker2008freebase} is a large knowledge bases of general facts about the world, which is now closed and merged with WikiData. It has 1.9 billion triple facts in its last version. Due to its popularity, we still use the dataset which is subset of Freebase extracted by~\cite{TransE2013}. There are roughly 15 thousands entities in the set, we therefore denote it with FB15k throughout the paper.
+
 
 \subsection{Setup}
 
-baselines, implementation details, how to do pretraining, and so on.
+\paragraph{Baselines} As the dataset is public and standard, we selected a set of representative trans-* models to compare, namely, \emph{TransE}, \emph{TransH}, \emph{TransR}, \emph{TransD}, and \emph{TransG}~\cite{TransE2013,TransH2014,TransR2015,TransD,TransG}. Since the dataset is the same, we use the experiment results directly from their corresponding paper. 
 
-\paragraph{Implementations} We use a multi-layer perceptron as our generator. Specifically dimension
+We at first pretrain both the generator and the discriminator for further adversarial training. To train the generator, we minimize the cross entropy loss as~(\ref{eq:g_pretrain}). For the discriminator, we just adopt TransE and take a close look at how the adversarial setting could affect its performance. We use the original loss function~(\ref{eq:TransE}) to train TransE, and keep most of the hyperparameters unchanged. The pretrained models are denoted as \emph{TransE-Pre} and \emph{Generator-Pre} respectively.
+
+We also want to know how negative sampling affects the models. Thus we use empty set of negative samples in (~\ref{eq:TransE}) and train a model denoted as \emph{TransE-NNS}. For the generator case, because the softmax function uses out all the logits to compute the probabilistic distribution, we think it in general takes all the other output as negative samples. Thus we replace softmax with sigmoid function and maxmize the only probability of the desired tail entity, and simulates a generative model with no negative sampling. We denote this model with \emph{Generator-NNS}. Furthermore, following the strategy in TransE, we add the negative samples into \emph{Generator-NNS} and  minimize a similar loss as~(\ref{eq:TransE}). The obtained generator is called \emph{Generator-NS}.
+
+Finally, we run the adversarial training algorithm and construct an ensemble of the generator and the discrminator. The overall model is denoted as \emph{AdvE}.
+
+\paragraph{Implementations} We use a multi-layer perceptron as our generator, which consists of an embedding layer and two subsequent hidden fully connected layer which use $\tanh$ activation, and finally a fully-connected output layer to produce the logit vector with length $\lvert\mathcal{E} \rvert$. To get the normalized probability, we further applied the softmax function on the logits.
+
+Since TransE is used as our discriminator for simplicity and reliability, to make a fair comparison, we fix the embedding dimension in generator as TransE to 50 under all settings. And we use L1 norm as the scoring function of TransE and the margin $\gamma$ is set to 1 as the original paper~\cite{TransE2013}. We add a slight regularization by setting the rate of weight decay~\cite{weight_decay} to 2.
+
+We use Adam~\cite{Adam} for optimization, and choose most of the recommended settings as $\beta_1=0.9,\beta_2=0.999$ and $\epsilon=10^{-8}$. For pretraining we set $\alpha=0.001$ as recommended, and set $\alpha=0.0001$ for adversarial training.
+
+We selected the $\alpha$ in~(\ref{eq:weighted-ensemble}) from $ \{0, 0.1, \dots, 0.9, 1\} $ to construct the ensemble on the validation set. Results show that 0.7 is the best. Thus all the reported link prediction results in Table~\ref{tab:link-prediction-results} are obtained with $\alpha=0.7$.
+
+Both the generator and TransE are pretrained for 20,000 iterations and almostly convergent. For the adversarial training, we also use the 20,000 iteration limit. We dump the model every 2000 iteration and test it on the validation set, and finally choose the best model that gives the overall best results.
 
 \subsection{Link prediction}
 
+\paragraph{Evaluation protocol} We use the same evaluation as the previous work~\cite{TransE2013,TransR2015,TransG,TransD}. Specifically, given the head entities and relations of the testing facts, we report the \emph{mean rank} of the tail entities, sorted by our models. We also report the ratio of tail entities correctly ranked in the top 10 position, the metric we called \emph{Hits@10}. Following the previous work, we also report the two metrics after removing any triple present in the training, validation, and testing data. This evaluation is called the \emph{filtered} setting, while the former one is the \emph{raw} setting.
+
+\paragraph{Results} Table~\ref{tab:link-prediction-results} lists the overall results. NNS is non-negative sampling We further reported the results in different.
+
+\paragraph{Ensemble Construction} We also examine the ensemble rates.
 
 
 \subsection{Triple classification}
@@ -308,6 +365,7 @@ baselines, implementation details, how to do pretraining, and so on.
 
 % --------------------------------------
 \section*{References}
+
 
 \bibliography{adv-kb2e-bibfile}
 
