@@ -43,7 +43,7 @@
 
 \cortext[correspondingauthor]{Corresponding author}
 \address[hrbaddress]{Harbin University of Science and Technology, No.52 Xuefu Road, Nangang District, Harbin, 150080, China}
-\address[ucasaddress]{University of Chinese Academy of Sciences, No.19(A) Yuquan Road, Shijingshan District, Beijing, P.R.China 100049}
+\address[ucasaddress]{University of Chinese Academy of Sciences, No.19(A) Yuquan Road, Shijingshan District, Beijing, 100049, China}
 
 % -------------------------
 % abstract + keywords
@@ -286,7 +286,7 @@ Cai and Wang recently develops a similar KBGAN~\cite{Cai2017KBGAN} model to ours
         \toprule
         \multirow{3}*{Model} & \multicolumn{4}{c|}{FB15k}  & \multicolumn{4}{c}{WN18} \\
         \cline{2-9}
-            & \multicolumn{2}{c|}{Mean Rank} & \multicolumn{2}{c|}{Hits@10} & \multicolumn{2}{c|}{Mean Rank} & \multicolumn{2}{c}{Hits@10} \\
+            & \multicolumn{2}{c|}{Mean Rank} & \multicolumn{2}{c|}{Hits@10(\%)} & \multicolumn{2}{c|}{Mean Rank} & \multicolumn{2}{c}{Hits@10(\%)} \\
         \cline{2-9}
             & Raw & Filter & Raw & Filter & Raw & Filter & Raw & Filter \\
         \midrule
@@ -297,15 +297,14 @@ Cai and Wang recently develops a similar KBGAN~\cite{Cai2017KBGAN} model to ours
         TransG & 152 & 50 & 55.9 & 88.2 & 357 & 345 & 84.5 & 94.9 \\
         \midrule
         TransE-NNS & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
-        TransE-Pre & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+        TransE-Pre & 235 & 159 & 36.3 & 44.29 & 5 & 6 & 7 & 8 \\
         Generator-NNS & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
         Generator-NS & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
-        Generator-Pre & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
-        Generator-MLE & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+        Generator-Pre & 314 & 234 & 39.1 & 50.8 & 5 & 6 & 7 & 8 \\
         \midrule
         % Generator-Adv & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
         % TransE-Adv & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
-        AdvE & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+        AdvE & 205 & 118 & 44.8 & 58.7 & 5 & 6 & 7 & 8 \\
         
         \bottomrule
     \end{tabular}
