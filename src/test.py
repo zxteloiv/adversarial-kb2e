@@ -115,7 +115,8 @@ class TransE_Scorer(object):
     def __call__(self, h, r):
         h_emb = self.transE.ent_emb(h).data # shape of (batchsz=1, embedding_size)
         r_emb = self.transE.rel_emb(r).data # and variable doesn't support broadcasting
-        values = self.xp.linalg.norm(h_emb + r_emb - self.ct_emb, axis=1) # norm value vector with shape of (#entity_num, )
+
+        values = self.xp.linalg.norm(h_emb + r_emb - self.ct_emb, ord=config.TRANSE_NORM, axis=1)  # norm value vector with shape of (#entity_num, )
 
         scores = chainer.cuda.to_cpu(values) # cupy doesn't support argsort yet
         return scores
