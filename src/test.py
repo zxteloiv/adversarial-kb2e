@@ -19,13 +19,22 @@ def main():
     parser.add_argument('--alpha', '-a', default=.5, type=float, help='GAN: alpha * d_value + (1-alpha) * g_value')
     parser.add_argument('--full', action='store_true', help='do a full testing')
     parser.add_argument('--filter', action='store_true', help='do a full testing')
+    parser.add_argument('--rel-cate', '-c', help="relation category tsv file")
     args = parser.parse_args()
 
     chainer.config.train = False
     full_testing = True if args.full else False
 
+    if config.DATASET_IN_USE != "FB15k" and args.rel_cate:
+        print "relation to category not available for datasets other than FB15k"
+        return
+
     vocab_ent, vocab_rel = mod_dataset.load_vocab()
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
+
+    rel2cate = None
+    if args.rel_cate:
+        rel2cate = get_rel_cate(vocab_rel, args.rel_cate)
 
     logging.getLogger().setLevel(logging.INFO)
     if args.msg:
@@ -88,10 +97,10 @@ def main():
 
     if args.use_valid:  # use validation set
         print "validation"
-        run_ranking_test(scorer, vocab_ent, valid_data, full_testing=full_testing, factbase=factbase)
+        run_ranking_test(scorer, vocab_ent, valid_data, full_testing=full_testing, factbase=factbase, rel2cate=rel2cate)
     else:
         print "testing"
-        run_ranking_test(scorer, vocab_ent, test_data, full_testing=full_testing, factbase=factbase)
+        run_ranking_test(scorer, vocab_ent, test_data, full_testing=full_testing, factbase=factbase, rel2cate=rel2cate)
 
 
 class TransE_Scorer(object):
@@ -163,7 +172,7 @@ class MLEGen_Scorer(object):
         return s
 
 
-def run_ranking_test(scorer, vocab_ent, test_data, full_testing=True, factbase=None):
+def run_ranking_test(scorer, vocab_ent, test_data, full_testing=True, factbase=None, rel2cate=None):
     xp = scorer.xp
 
     data_iter = chainer.iterators.SerialIterator(test_data, batch_size=1, repeat=False, shuffle=False)
@@ -173,6 +182,7 @@ def run_ranking_test(scorer, vocab_ent, test_data, full_testing=True, factbase=N
     scorer.set_candidate_t(candidate_t)
 
     avgrank, hits10, count = 0, 0, 0
+    hits10bycate, countbycate = {}, {}
     for i, batch in enumerate(data_iter):
         try:
             h, r, t = batch[0] # each one is an array of shape (1, )
@@ -197,9 +207,21 @@ def run_ranking_test(scorer, vocab_ent, test_data, full_testing=True, factbase=N
             hits10 += 1 if rank < 10 else 0
             count += 1
 
+            if rel2cate is not None:
+                cate = rel2cate[r[0]]
+                if cate not in hits10bycate:
+                    hits10bycate[cate] = 0
+                if cate not in countbycate:
+                    countbycate[cate] = 0
+                hits10bycate[cate] += 1 if rank < 10 else 0
+                countbycate[cate] += 1
+
             if i % 1000 == 0:
                 logging.info('%d testing data processed, temp rank: %d, hits10: %d, hits10p: %.4f, avgrank: %.4f' % (
                     count, avgrank, hits10, hits10 * 1.0 / count, avgrank / float(count)))
+                if rel2cate is not None:
+                    print ", ".join("{0} => {1:.4f}".format(cate, hits10bycate[cate] * 1.0 / countbycate[cate])
+                             for cate in hits10bycate)
 
             if i / 1000 >= 10 and not full_testing:
                 break
@@ -209,6 +231,19 @@ def run_ranking_test(scorer, vocab_ent, test_data, full_testing=True, factbase=N
     avgrank /= count * 1.0
     hits10 /= count * 1.0
     print "avgrank:", avgrank, "hits@10:", hits10, "count:", count
+    for cate, hits in hits10bycate.iteritems():
+        print cate, "=>", hits * 1.0 / countbycate[cate]
+
+
+
+def get_rel_cate(vocab_rel, catefile):
+    rel2cate = {}
+    for l in open(catefile):
+        r, cate = l.rstrip().split('\t')
+        rel2cate[vocab_rel(r)] = cate
+
+    return rel2cate
+
 
 if __name__ == "__main__":
     main()
