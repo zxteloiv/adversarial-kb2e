@@ -1,7 +1,7 @@
 # coding: utf-8
 
 from __future__ import absolute_import
-import os, argparse, logging
+import os, argparse, logging, itertools
 import chainer
 import chainer.functions as F
 import numpy as np
@@ -18,6 +18,7 @@ def main():
     parser.add_argument('--msg', '-m', help='a message to print')
     parser.add_argument('--alpha', '-a', default=.5, type=float, help='GAN: alpha * d_value + (1-alpha) * g_value')
     parser.add_argument('--full', action='store_true', help='do a full testing')
+    parser.add_argument('--filter', action='store_true', help='do a full testing')
     args = parser.parse_args()
 
     chainer.config.train = False
@@ -35,6 +36,16 @@ def main():
     valid_data, test_data = map(lambda f: mod_dataset.load_corpus(f, vocab_ent, vocab_rel),
                                 (config.VALID_DATA, config.TEST_DATA))
     logging.info('data loaded, size: train:valid:test=-:%d:%d' % (len(valid_data), len(test_data)))
+
+    factbase = {}
+    if args.filter:
+        train_data = mod_dataset.load_corpus(config.TRAIN_DATA, vocab_ent, vocab_rel)
+        logging.info('training data loaded, size: train=%d' % len(train_data))
+        for (h, r, t) in itertools.chain(train_data, valid_data, test_data):
+            h, r, t = h[0], r[0], t[0]
+            if (h, r) not in factbase:
+                factbase[(h, r)] = np.zeros((ent_num,), dtype=np.int32)
+            factbase[(h, r)][t] = 1
 
     xp = np
     if config.DEVICE >= 0:
@@ -77,10 +88,10 @@ def main():
 
     if args.use_valid:  # use validation set
         print "validation"
-        run_ranking_test(scorer, vocab_ent, valid_data, full_testing=full_testing)
+        run_ranking_test(scorer, vocab_ent, valid_data, full_testing=full_testing, factbase=factbase)
     else:
         print "testing"
-        run_ranking_test(scorer, vocab_ent, test_data, full_testing=full_testing)
+        run_ranking_test(scorer, vocab_ent, test_data, full_testing=full_testing, factbase=factbase)
 
 
 class TransE_Scorer(object):
@@ -152,7 +163,7 @@ class MLEGen_Scorer(object):
         return s
 
 
-def run_ranking_test(scorer, vocab_ent, test_data, full_testing=True):
+def run_ranking_test(scorer, vocab_ent, test_data, full_testing=True, factbase=None):
     xp = scorer.xp
 
     data_iter = chainer.iterators.SerialIterator(test_data, batch_size=1, repeat=False, shuffle=False)
@@ -166,10 +177,20 @@ def run_ranking_test(scorer, vocab_ent, test_data, full_testing=True):
         try:
             h, r, t = batch[0] # each one is an array of shape (1, )
             if config.DEVICE >= 0:
-                h = chainer.dataset.to_device(config.DEVICE, h)
-                r = chainer.dataset.to_device(config.DEVICE, r)
+                hg = chainer.dataset.to_device(config.DEVICE, h)
+                rg = chainer.dataset.to_device(config.DEVICE, r)
+            else:
+                hg, rg = h, r
 
-            scores = scorer(h, r)
+            scores = scorer(hg, rg)
+
+            # filtered setting
+            if factbase is not None and len(factbase) > 0:
+                offsetvec = factbase.get((h[0], r[0]))
+                offsetvec[t[0]] = 0     # make sure current triple is not affected by the filtering
+                maxscore = np.max(scores)
+                scores += offsetvec * maxscore
+
             sorted_index = np.argsort(scores)
             rank = np.where(sorted_index == t[0])[0][0]  # tail ent id 1 ~ maxid, but the sorted index: 0 ~ maxid
             avgrank += rank
