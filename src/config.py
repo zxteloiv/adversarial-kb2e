@@ -3,7 +3,7 @@
 import os.path
 
 # environment conf
-DATASET_IN_USE = 'WN18'
+DATASET_IN_USE = 'FB15kR'
 DEVICE = 3
 ROOT_PATH = '..'
 
@@ -23,7 +23,7 @@ TRAINING_LIMIT = (2000, 'iteration')
 
 # model conf
 EMBED_SZ = 50
-MARGIN = 2.
+MARGIN = 1.
 TRANSE_NORM = 1  # L1 norm =1, L2 norm =2
 
 GRADIENT_CLIP = .1

@@ -18,12 +18,12 @@ def main(argv):
     ent_num, rel_num = len(vocab_ent) + 1, len(vocab_rel) + 1
 
     # trainer = adversarial_trainer(argv, ent_num, rel_num, train_iter, valid_iter)
-    # trainer = mle_trainer(argv, ent_num, rel_num, train_iter, valid_iter)
+    trainer = mle_trainer(argv, ent_num, rel_num, train_iter, valid_iter)
 
     # Exp 1. & 2. TransE with and without negative sampling
-    model = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.MARGIN, config.TRANSE_NORM)
+    # model = models.TransE(config.EMBED_SZ, ent_num, rel_num, config.MARGIN, config.TRANSE_NORM)
     # model = models.TransENNG(config.EMBED_SZ, ent_num, rel_num, config.MARGIN, config.TRANSE_NORM)
-    trainer = standard_trainer(argv, model, train_iter, valid_iter)
+    # trainer = standard_trainer(argv, model, train_iter, valid_iter)
     dump_conf(trainer)
     try:
         trainer.run()
@@ -57,7 +57,7 @@ def adversarial_trainer(argv, ent_num, rel_num, train_iter, valid_iter):
                                   d_epoch=config.OPT_D_EPOCH, g_epoch=config.OPT_G_EPOCH, margin=config.MARGIN,
                                   greater_d_value_better=isinstance(discriminator, models.Discriminator),
                                   dist_based_g=config.DISTANCE_BASED_G, dist_based_d=config.DISTANCE_BASED_D)
-    updater = updaters.GANPretraining(train_iter, opt_g, opt_d, ent_num, rel_num, config.MARGIN, config.DEVICE)
+    # updater = updaters.GANPretraining(train_iter, opt_g, opt_d, ent_num, rel_num, config.MARGIN, config.DEVICE)
 
     trainer = chainer.training.Trainer(updater, config.TRAINING_LIMIT, out=get_trainer_out_path())
     trainer.extend(extensions.LogReport(trigger=(1, 'iteration')))

@@ -25,7 +25,7 @@ def main():
     chainer.config.train = False
     full_testing = True if args.full else False
 
-    if config.DATASET_IN_USE != "FB15k" and args.rel_cate:
+    if (not config.DATASET_IN_USE.startswith("FB15k")) and args.rel_cate:
         print "relation to category not available for datasets other than FB15k"
         return
 
