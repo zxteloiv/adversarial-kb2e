@@ -7,6 +7,7 @@
 \usepackage{booktabs}
 \usepackage{multirow}
 \usepackage{caption,subcaption}
+\usepackage[ruled,vlined]{algorithm2e}
 \modulolinenumbers[5]
 
 \journal{Journal of Web Semantics}
@@ -72,15 +73,16 @@ Knowledge Graph \sep{} Representation Learning \sep{} Adversarial Training \sep{
 \section{Introduction}
 \label{sec:intro}
 
-Knowledge graph is an important component in many natural language processing applications nowadays, such as natural language inference, question answering, and task-oriented dialogue generation. One of the fundamental tasks in the field is \emph{representation learning}, which aims to learn a representation for each \emph{entity} and \emph{relation} in a knowledge graph. Consider the following example. The triple \emph{(Leonhard Euler, born-in, Basel)} is a selected fact from a typical knowledge graph, \emph{WikiData}\footnote{https://www.wikidata.org/}. Representation learning models assign a vectorized representation respectively to the head entity \emph{Leonhard Euler} and the tail entity \emph{Basel}, and some models also give a representation for each relation, namely \emph{born-in} in this example. In general, there must be some characteristics to hold or constraints to meet for these representations, which facilitate other tasks like inference or completion on the knowledge graph.
+People devote to construct and organize broad-coverage knowledge graphs (KGs) such as WikiData, Freebase and WordNet. KGs contain inter-linked triplets, and a triplet ((head entity, relation, tail entity), simply as (h, r, t)) indicates the fact that the two entities hold the relation. The rich structured knowledge bases become useful resources to support downstream natural language processing (NLP) and artificial intelligence (AI) applications such as recommended system (加参考文献), Web Search (加参考文献) and Question Answering (加参考文献). Due to the knowledge represented with symbols, KGs cannot be easily embodied in downstream models, especially in neural network models. In addition, the knowledge reasoning (another core task in AI) with the symbolic representation are inflexible and inefficient.
 
-
-\begin{figure}[ht]
+\begin{figure}[htb]
     \centering
     \includegraphics[width=0.3\textwidth]{images/translation.pdf}
-    \caption{Translation example where \emph{Leonhard Euler} acts as the head entity. Blue arrows indicate the translation from the head to tail entities under the relation \emph{child} and \emph{born-in}. Orange arrows illustrate the improperness of randomly negative sampling. Replacing \emph{Johann Euler} with \emph{Basel} is not useful for the model while substitution with \emph{Christoph Euler} will mislead the training.}
+    \caption{Translation example where \emph{Leonhard Euler} acts as the head entity. Blue arrows indicate the translation from the head to tail entities under the relation \emph{child} and \emph{born-in}. Orange arrows illustrate the improperness of randomly negative sampling. Replacing \emph{Johann Euler} with \emph{Basel} is too easy for the model to improve, while substitution with \emph{Christoph Euler} will mislead the training. The best strategy is to choose the close and false tail entities as negative samples, that is, \emph{Pierre de Fermat} and \emph{Carl Friedrich Gauss} denoted by a minus sign (-) in this figure.}
 \label{translation-example}
 \end{figure}
+
+To better and conveniently utilize the knowledge, alike to the word embedding, knowledge graph embeddings (KGE) have been proposed to learn the representations of the elements and structures in a KG, which attempt to embed it into a low-dimensional continuous space.  Specifically, KGE aims to learn a numerical  representation for each \emph{entity} and \emph{relation} in the KG. Consider the following example. The triple \emph{(Leonhard Euler, born-in, Basel)} is a selected fact from a typical knowledge graph, \emph{WikiData}\footnote{https://www.wikidata.org/}. Typical KGE models assign a vectorized representation for the head entity \emph{Leonhard Euler} and the tail entity \emph{Basel}, and some models also give a representation for each relation, namely \emph{born-in} in this example. In general, there must be some characteristics to hold or constraints to meet for these representations, which facilitate other tasks like inference or completion on the knowledge graph.
 
 One of the most popular constraints is the translation assumption. Borders et al.~\cite{TransE2013} first proposed the \emph{TransE} model, in which the representation of a tail entity~$(t)$ could be arithmetically computed from the head entity~$(h)$ and relation~$(r)$, that is, $h + r \simeq t$. This gives a very concise and beautiful geometric explanation that every relation can move or \emph{translate} an entity embedding into another, translating \emph{Leonhard Euler} into \emph{Basel} in Figure~\ref{translation-example} for example, and hence its name \emph{TransE}.
 The model is trained by minimize a hinge loss with a predefined margin between the distances of positive and negative samples. The distance in TransE is given by an L1 or L2 norm of the vector~$h + r - t$, which is a special case of scoring (or~energy) function.
@@ -138,6 +140,46 @@ Our contributions are thus two-fold:
 
 % ---------------------------------------
 % method
+
+\begin{algorithm*}[t]
+\DontPrintSemicolon
+\KwData{$G=(X,U)$ such that $G^{tc}$ is an order.}
+\KwResult{$G’=(X,V)$ with $V\subseteq U$ such that $G’^{tc}$ is an interval order.}
+\Begin{
+    $V \longleftarrow U$\;
+    $S \longleftarrow \emptyset$\;
+    \For{$x\in X$}{
+    $NbSuccInS(x) \longleftarrow 0$\;
+    $NbPredInMin(x) \longleftarrow 0$\;
+    $NbPredNotInMin(x) \longleftarrow |ImPred(x)|$\;
+    }
+    \If{$NbPredInMin(x) = 0$ {\bf and} $NbPredNotInMin(x) = 0$}{
+        $AppendToMin(x)$
+    }
+    
+    \While{$S \neq \emptyset$}{
+        remove $x$ from the list of $T$ of maximal index\;
+        \While{$|S \cap  ImSucc(x)| \neq |S|$}{
+            \For{$ y \in  S-ImSucc(x)$}{
+                \{ remove from $V$ all the arcs $zy$: \} \;
+                \For{$z \in  ImPred(y) \cap  Min$}{
+                    remove the arc $zy$ from $V$\;
+                    $NbSuccInS(z) \longleftarrow NbSuccInS(z) - 1$\;
+                    move $z$ in $T$ to the list preceding its present list\;
+                    \{i.e. If $z \in T[k]$, move $z$ from $T[k]$ to
+                    $T[k-1]$\}
+                }
+                $NbPredInMin(y) \longleftarrow 0$\;
+                $NbPredNotInMin(y) \longleftarrow 0$\;
+                $S \longleftarrow S - \{y\}$\;
+                $AppendToMin(y)$\;
+            }
+        }
+        $RemoveFromMin(x)$\;
+    }
+}
+    \caption{IntervalRestriction\label{IR}}
+\end{algorithm*}
 
 \section{Methods}
 
@@ -345,7 +387,7 @@ We use Adam~\cite{Adam} for optimization, and choose most of the recommended set
 
 We selected the $\alpha$ in~(\ref{eq:weighted-ensemble}) from $ \{0, 0.1, \dots, 0.9, 1\} $ to construct the ensemble on the validation set. Results show that 0.7 is the best. Thus all the reported link prediction results in Table~\ref{tab:link-prediction-results} are obtained with $\alpha=0.7$.
 
-Both the generator and TransE are pretrained for 20,000 iterations and almostly convergent on FB15k. We extends the training time to 40,000 iterations on WN18. For the adversarial training, we still use the 20,000 iteration limit. We dump the model every 2000 iteration and test it on the validation set, and choose the best model to report the results.
+Both the generator and TransE are pretrained for 20,000 iterations and almostly convergent on FB15k and WN18. For the adversarial training, we also use the 20,000 iteration limit. During every iteration, we first update once for the discriminator and then once for the generator. We dump the model every 2000 iteration and test it on the validation set, and choose the best model to report the results.
 
 \subsection{Link prediction}
 
