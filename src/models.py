@@ -90,7 +90,7 @@ class Generator(chainer.Chain):
         # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
         super(Generator, self).__init__()
         with self.init_scope():
-            self.mlp = VarMLP([emb_sz * 2, emb_sz, emb_sz, ent_num], dropout)
+            self.mlp = VarMLP([emb_sz * 2, emb_sz, emb_sz, ent_num], dropout, activate=F.selu)
             self.emb = Embeddings(emb_sz, ent_num, rel_num)
 
         self.ent_num = ent_num
