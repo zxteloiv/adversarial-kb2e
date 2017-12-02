@@ -1,4 +1,4 @@
-\documentclass[twocolumn,a4paper,10pt,preprint,3p]{elsarticle}
+\documentclass[twocolumn,a4paper,preprint,10pt,3p]{elsarticle}
 
 \usepackage{amsmath}
 \usepackage{lineno,hyperref}
@@ -24,7 +24,7 @@
 
 \begin{frontmatter}
 
-\title{Adversarial Training for Knowledge Graph Embedding with Ensemble Construction}
+\title{Ensemble Construction for Knowledge Graph Embedding with Adversarial Learning}
 
 % ----------------------
 % affiliations
@@ -52,7 +52,7 @@
 % abstract + keywords
 
 \begin{abstract}
-Adversarially training.
+Knowledge graph is an important resource in many NLP and AI applications. We focus on learning the embedding of the subset of two typical knowledge graphs respectively, namely Freebase and WordNet. Following the success of TransE, there comes a lot of work which adopt the translation assumption and share a similar training framework. These models can be categorized as the discriminative approach. Discriminative models may get stuck in the improperness of negative sampling, because of their similar strategy on selecting negative samples. Furthermore, the one-to-many relations are pervasive in these knowledge graphs, which also brings difficulties to scoring-based discriminative models. Following TransG and inspired by GAN, we use a ranking-based adversarial loss to optimize a generator, along with the discriminator which is TransE in our case. Since neither model could do the job on its own perfectly, we consequently construct a weighted averge of these models, which is a simple application of ensemble learning. This method makes a significant improvement compared with both the two models on public dataset FB15k.
 \end{abstract}
 
 \begin{keyword}
@@ -73,16 +73,21 @@ Knowledge Graph \sep{} Representation Learning \sep{} Adversarial Training \sep{
 \section{Introduction}
 \label{sec:intro}
 
-People devote to construct and organize broad-coverage knowledge graphs (KGs) such as WikiData, Freebase and WordNet. KGs contain inter-linked triplets, and a triplet ((head entity, relation, tail entity), simply as (h, r, t)) indicates the fact that the two entities hold the relation. The rich structured knowledge bases become useful resources to support downstream natural language processing (NLP) and artificial intelligence (AI) applications such as recommended system (加参考文献), Web Search (加参考文献) and Question Answering (加参考文献). Due to the knowledge represented with symbols, KGs cannot be easily embodied in downstream models, especially in neural network models. In addition, the knowledge reasoning (another core task in AI) with the symbolic representation are inflexible and inefficient.
+People devote to construct and organize broad-coverage knowledge graphs (KGs) such as WikiData~\cite{wikidata}, Freebase~\cite{freebase} and WordNet~\cite{miller1995wordnet}. KGs contain inter-linked triplets, and a triplet ((head entity, relation, tail entity), simply as (h, r, t)) indicates the fact that the two entities hold the relation. The rich structured knowledge bases become useful resources to support downstream natural language processing (NLP) and artificial intelligence (AI) applications such as recommendation system~\cite{Zhang2016recommendation}, Web Search~\cite{Su2015websearch,Yahya2016websearch} and Question Answering~\cite{yih2015semantic}. Due to the symbolic represention of knowledge, KGs cannot be easily embodied in downstream models, especially in neural network models. In addition, the knowledge reasoning (another core task in AI) with the symbolic representation are inflexible and inefficient.
 
-\begin{figure}[htb]
+To better and conveniently utilize the knowledge, alike to the word embedding, knowledge graph embeddings (KGE) have been proposed to learn the representations of the elements and structures in a KG, which attempt to embed it into a low-dimensional continuous space.  Specifically, KGE aims to learn a numerical  representation for each \emph{entity} and \emph{relation} in the KG. Consider the following example. The triple \emph{(Leonhard Euler, born-in, Basel)} is a fact selected from the online knowledge graph, \emph{WikiData}\footnote{https://www.wikidata.org/}. Typical KGE models assign a vectorized representation for the head entity \emph{Leonhard Euler} and the tail entity \emph{Basel}, and some models also give a representation for each relation, namely \emph{born-in} in this example. In general, there must be some characteristics to hold or constraints to meet for these representations, which facilitate other tasks like inference or completion on the knowledge graph.
+
+
+
+
+
+
+\begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.3\textwidth]{images/translation.pdf}
+    \includegraphics[width=0.4\textwidth]{translation.pdf}
     \caption{Translation example where \emph{Leonhard Euler} acts as the head entity. Blue arrows indicate the translation from the head to tail entities under the relation \emph{child} and \emph{born-in}. Orange arrows illustrate the improperness of randomly negative sampling. Replacing \emph{Johann Euler} with \emph{Basel} is too easy for the model to improve, while substitution with \emph{Christoph Euler} will mislead the training. The best strategy is to choose the close and false tail entities as negative samples, that is, \emph{Pierre de Fermat} and \emph{Carl Friedrich Gauss} denoted by a minus sign (-) in this figure.}
 \label{translation-example}
 \end{figure}
-
-To better and conveniently utilize the knowledge, alike to the word embedding, knowledge graph embeddings (KGE) have been proposed to learn the representations of the elements and structures in a KG, which attempt to embed it into a low-dimensional continuous space.  Specifically, KGE aims to learn a numerical  representation for each \emph{entity} and \emph{relation} in the KG. Consider the following example. The triple \emph{(Leonhard Euler, born-in, Basel)} is a selected fact from a typical knowledge graph, \emph{WikiData}\footnote{https://www.wikidata.org/}. Typical KGE models assign a vectorized representation for the head entity \emph{Leonhard Euler} and the tail entity \emph{Basel}, and some models also give a representation for each relation, namely \emph{born-in} in this example. In general, there must be some characteristics to hold or constraints to meet for these representations, which facilitate other tasks like inference or completion on the knowledge graph.
 
 One of the most popular constraints is the translation assumption. Borders et al.~\cite{TransE2013} first proposed the \emph{TransE} model, in which the representation of a tail entity~$(t)$ could be arithmetically computed from the head entity~$(h)$ and relation~$(r)$, that is, $h + r \simeq t$. This gives a very concise and beautiful geometric explanation that every relation can move or \emph{translate} an entity embedding into another, translating \emph{Leonhard Euler} into \emph{Basel} in Figure~\ref{translation-example} for example, and hence its name \emph{TransE}.
 The model is trained by minimize a hinge loss with a predefined margin between the distances of positive and negative samples. The distance in TransE is given by an L1 or L2 norm of the vector~$h + r - t$, which is a special case of scoring (or~energy) function.
@@ -91,7 +96,7 @@ Models that share the same framework but differ in the scoring function can be s
 
 Despite the success of these discriminative models, there are two challenges remaining for the problem.
 The first one is the \textbf{improperness of negative sampling}, that the randomly chosen negative samples can be either completely absurd or indeed authentic.
-The model can differentiate with little effort the absurd samples which are therefore useless for training. But the authentic negative samples will fool the model and mislead it towards a wrong direction. Figure~\ref{translation-example} gives an illustration. For these two facts in WikiData \emph{(Leonhard Euler, child, Chistoph Euler)} and \emph{(Leonhard Euler, child, Johann Euler)}, we may simply substituting the tail entity by another absurd entity, say, \emph{Basel} to construct a negative sample, which yields a triple \emph{(Leonhard Euler, child, Basel)}. The model will receive no improvement because the entity is even a city rather than a person. But if an either child is selected to act as the tail entity for the other triple which further serves as a negative sample, the model will probably get fooled.
+The model can differentiate with little effort the absurd samples which are therefore useless for training. But the authentic negative samples will fool the model and mislead it towards a wrong direction. Figure~\ref{translation-example} gives an illustration. For these two facts in WikiData \emph{(Leonhard Euler, child, Chistoph Euler)} and \emph{(Leonhard Euler, child, Johann Euler)}, we may simply substituting the tail entity by another absurd entity, say, \emph{Basel} to construct a negative sample, which yields a triple \emph{(Leonhard Euler, child, Basel)}. The model will receive no improvement because the entity is even a city rather than a person. But if an either child is selected to act as the tail entity for the other triple which further serves as a negative sample, the model will probably get fooled. Better choices are like \emph{Pierre de Fermat} and \emph{Carl Friedrich Gauss}, that is close to the true tail but not the real fact.
 
 \begin{table}
     \centering
@@ -128,11 +133,11 @@ At the generator side, we discard the translation assumption. For simplicity, we
 
 At the discriminator side, inspired by the idea from IRGAN~\cite{IRGAN}, we build a ranking-based loss which will not take generated samples as complete negative samples but only give them lower rank compared to the positive sample.
 
-We have talked about the traits of the discriminative and generative models in this task. Note that the generator can do much more than generating negative samples, it also has the power of prediction just like the discriminator. Empirically we know neither model could completely beat the opposite. The characteristics of these two are quite different and we thus have two very heterogeneous models in the adversarial training setting, which happens to meet the requirement for ensemble learning. Therefore we adopt a simple weighted voting method to ensemble the two only models and received very impressive results.
+We have talked about the traits of the discriminative and generative models in this task. Note that the generator can do much more than generating negative samples, it also has the power of prediction just like the discriminator. Empirically we know neither model could completely beat the opposite. The characteristics of these two are quite different and we thus have two very heterogeneous models in the adversarial training setting, which happens to meet the requirement for ensemble learning. Therefore we adopt a simple weighted voting method to combine the two only models and received very impressive results.
 
 Our contributions are thus two-fold:
 \begin{itemize}
-    \item We propose an adversarial ranking training for representation learning of knowledge graph, in order to generate better negative samples and make better use of them.
+    \item We propose a ranking-based adversarial training for representation learning of knowledge graph, in order to generate better negative samples and make better use of them.
     \item To exploit the power of both the generator and discriminator, we propose to use a simple ensemble method which beats all the baselines and achieves the best result.
 \end{itemize}
 
@@ -141,45 +146,6 @@ Our contributions are thus two-fold:
 % ---------------------------------------
 % method
 
-\begin{algorithm*}[t]
-\DontPrintSemicolon
-\KwData{$G=(X,U)$ such that $G^{tc}$ is an order.}
-\KwResult{$G’=(X,V)$ with $V\subseteq U$ such that $G’^{tc}$ is an interval order.}
-\Begin{
-    $V \longleftarrow U$\;
-    $S \longleftarrow \emptyset$\;
-    \For{$x\in X$}{
-    $NbSuccInS(x) \longleftarrow 0$\;
-    $NbPredInMin(x) \longleftarrow 0$\;
-    $NbPredNotInMin(x) \longleftarrow |ImPred(x)|$\;
-    }
-    \If{$NbPredInMin(x) = 0$ {\bf and} $NbPredNotInMin(x) = 0$}{
-        $AppendToMin(x)$
-    }
-    
-    \While{$S \neq \emptyset$}{
-        remove $x$ from the list of $T$ of maximal index\;
-        \While{$|S \cap  ImSucc(x)| \neq |S|$}{
-            \For{$ y \in  S-ImSucc(x)$}{
-                \{ remove from $V$ all the arcs $zy$: \} \;
-                \For{$z \in  ImPred(y) \cap  Min$}{
-                    remove the arc $zy$ from $V$\;
-                    $NbSuccInS(z) \longleftarrow NbSuccInS(z) - 1$\;
-                    move $z$ in $T$ to the list preceding its present list\;
-                    \{i.e. If $z \in T[k]$, move $z$ from $T[k]$ to
-                    $T[k-1]$\}
-                }
-                $NbPredInMin(y) \longleftarrow 0$\;
-                $NbPredNotInMin(y) \longleftarrow 0$\;
-                $S \longleftarrow S - \{y\}$\;
-                $AppendToMin(y)$\;
-            }
-        }
-        $RemoveFromMin(x)$\;
-    }
-}
-    \caption{IntervalRestriction\label{IR}}
-\end{algorithm*}
 
 \section{Methods}
 
@@ -193,10 +159,49 @@ We defined the discriminator $d$ as a scoring function which maps a triple to a 
 
 \begin{figure}[t]
     \centering
-    \includegraphics[width=0.35\textwidth]{images/overview.pdf}
-    \caption{Overview of our adversarial training setting. The solid lines indicate the flow of training data and dash lines show the back propagation direction of gradients. Orange lines illustrate the process in which the discriminator uses generated negative samples and maximize the ranking-based objective. Blue lines shows the generator use discriminator as its feedback and propagate the gradient through gumbel softmax~\cite{GumbelSoftmax_Jiang_2016}.}
+    \includegraphics[width=0.35\textwidth]{overview.pdf}
+    \caption{Overview of our adversarial training setting. The solid lines indicate the flow of training data and dash lines show the back propagation direction of gradients. Orange lines illustrate the process in which the discriminator uses generated negative samples and maximizes the ranking-based objective. Blue lines shows the generator use discriminator as its feedback and propagate the gradient through gumbel softmax~\cite{GumbelSoftmax_Jiang_2016}.}
 \label{system-overview}
 \end{figure}
+
+\begin{algorithm*}[htb]
+    \DontPrintSemicolon
+    \KwIn{Pretrained generator $g$, pretrained TransE as the discriminator $d$,
+    a mini-batch of data $X_b$, the number of samples for ranking, $K$,
+    learning rate $\eta$, weight decay rate $\gamma$.}
+    \KwResult{Adversarially trained generator $g$ and $d$ models}
+    \SetKwFunction{GetRank}{GetRank}%
+    \SetKwFunction{softmax}{SoftMax}%
+    \SetKwFunction{gumbelsoft}{GumbelSoftmax}%
+    \Begin{
+        $grad_d \longleftarrow 0, grad_g \longleftarrow 0$ \tcp*{empty the gradients}
+        \tcp{Train the discriminator, i.e., TransE}
+        \For{$(h, r, t)\in X_b$}{
+            $logits \longleftarrow g(h, r)$ \;
+            $distribution \longleftarrow $ \softmax{$logits$} \;
+            $\hat t_- \longleftarrow$ draw 1 sample from the predicted $distribution$ of $t$ \;
+            $\hat t_+ \longleftarrow$ draw $K$ samples from the predicted $distribution$ \;
+            
+            $loss_d \longleftarrow $ \GetRank{$t$, $\hat t_+$} $-$ \GetRank{$\hat t_-$, $t$} \tcp*{compute rankings as (\ref{eq:ranking}) to build loss}
+    
+            $grad_d \longleftarrow -\bigtriangledown loss_d$
+            \tcp*{add up the gradient for this example}
+        }
+        $\Theta_d \longleftarrow \Theta_d - \eta grad_d - \gamma \Theta_d $ \tcp*{update the discriminator model}
+        \tcp{Train the generator}
+        \For{$(h, r, t)\in X_b$}{
+            $logits \longleftarrow g(h, r)$ \;
+            $sample \longleftarrow $ \gumbelsoft{$logits$} \tcp*{follow (\ref{eq:gumbel-softmax}) to draw a sample from the output multinomial distribution}
+            \tcp{use discriminator scores to build up the loss function of generator }
+            $score_{t'} \leftarrow d(h, r, sample), score_t \leftarrow d(h, r, t)$ \;
+            $loss_g \longleftarrow - \exp(score_{t'}) / (\exp(score_{t'}) + \exp(score_{t}))$ \;
+            $grad_g \longleftarrow \bigtriangledown loss_g$ \tcp*{add up the gradient for the generator}
+        }
+        $\Theta_g \longleftarrow \Theta_g - \eta grad_g - \gamma \Theta_g$
+        \tcp*{update the generator parameters}
+    }
+    \caption{Adversarial Training in each iteration\label{algo:adv-training}}
+\end{algorithm*}
 
 \subsection{Discriminator}
 
@@ -207,13 +212,13 @@ As discussed in the Section~\ref{sec:intro}, we use a ranking-based objective wh
 where $h$ and $r$ are the head entity and relation respectively, $t$ is the tail entity from training data, and $t^*$ is a tail entity coming from either the generator or the training data, which making the score distance be 0 in the latter case.
 
 We defined the ranking function as follows,
-\begin{align*}
-    rank_\tau(t, {\{\tilde t \}}_{i=1}^K)
+\begin{align}
+    rank_\tau &(t, {\{\tilde t \}}_{i=1}^K) \notag \\
     &= \frac{\exp(sd(t, t; h, r) / \tau)}
-        {\sum_{t^*\in \{t\} \cup {\{\tilde t \}}_{i=1}^K } \exp (sd(t, t^*; h, r) / \tau) } \\
+        {\sum_{t^*\in \{t\} \cup {\{\tilde t \}}_{i=1}^K } \exp (sd(t, t^*; h, r) / \tau) } \notag \\
     &= \frac{1}
-        {\sum_{t^*\in \{t\} \cup {\{\tilde t \}}_{i=1}^K } \exp (sd(t, t^*; h, r) / \tau) },
-\end{align*}
+        {\sum_{t^*\in \{t\} \cup {\{\tilde t \}}_{i=1}^K } \exp (sd(t, t^*; h, r) / \tau) }, \label{eq:ranking}
+\end{align}
 where $t$ is a tail entity from the training data, $\tilde t$ is a tail entity sampled from the generator, $K$ indicates the number of tail entity samples in the ranking list, and $\tau$ is the temperature hyperparameter to control the variance of the softmax function.
 
 We then define the training loss for the discriminator as follows,
@@ -242,9 +247,9 @@ The generator will output an probabilistic measure of the set of all entities $\
 However, it's not possible to directly optimize the above loss function using gradient-based algorithms. In practice, we have to sample a discrete distribution, which makes a simple reparemeterization trick~\cite{VAE} fail. A popular solution to this problem is to adopt reinforcement learning. The REINFORCE algorithm~\cite{Williams_1992}, for example, reformulates the gradient of the generator objective above but is known to be hard to train and meets the problem of cold start. Furthermore, the gradients it produced tend to have high variance, though a baseline term was added in our experiments.
 
 Since the generator actually gives a multinomial distribution, we adopt the gumbel softmax~\cite{GumbelSoftmax_Jiang_2016} which uses gumbel noise to reparemeterize the multinomial distribution. Specifically, we add standard gumbel noise to the unnormalized log probabilities (logits) and do softmax as follows,
-\begin{align*}
-    GumbelProb_i = \frac{\exp((logits_i + z_i)/ \tau)}{\sum_{j}\exp((logits_j + z_j)/ \tau)},
-\end{align*}
+\begin{align}
+    GumbelProb_i = \frac{\exp((logits_i + z_i)/ \tau)}{\sum_{j}\exp((logits_j + z_j)/ \tau)}, \label{eq:gumbel-softmax}
+\end{align}
 where $z \sim Gumbel(0, 1)$ is the sampled gumbel noise, $logits$ is the output of the generator, and $\tau$ is the positive temperature. As $\tau$ descreases towards 0, the gumbel probability will approximate a one-hot vector sampled from the categorical distribution parameterized by the output logits, which is differentiable w.r.t.\ the $logits$. Blue lines in Figure~\ref{system-overview} illustrate the generator learning process, too.
 
 
@@ -255,8 +260,8 @@ where $z \sim Gumbel(0, 1)$ is the sampled gumbel noise, $logits$ is the output 
 To keep things simple, we minimize the cross entropy loss for the generator as below,
 \begin{equation}
     \min_g \sum_{(h, r, t)\in X} -p_g(t \mid h, r), \label{eq:g_pretrain}
-\end{equation}.
-Because our generator output logits only, we further use softmax to convert the logits to a normalized probability measure.
+\end{equation}
+Because our generator output logits only, we further use softmax to convert the logits to a normalized probabilistic measure.
 
 For the discriminator, we either use the similar hinge loss with margin as TransE~\cite{TransE2013},
 \begin{equation}
@@ -286,11 +291,11 @@ We continue to discuss the work related to ours and make comparisons with them i
 where $S$ is the set of triples and $S'$ is the set of negative samples. $f(h, r, t)$ can be viewed as an energy or scoring function which in their case is an L1 or L2 norm of $h + r - t$. TransH~\cite{TransH2014} extends the basic TransE by projecting entities to the hyperplaned defined by the relation. Let $\omega_r$ be the normal vector of the hyperplane, then the scoring function in TransH is defined as $f(h, r, t) = \lVert(h~-~\omega_r^T h \omega_r) + d_r -~(t~-~\omega_r^T t \omega_r)\rVert_2^2 $.
 TransR~\cite{TransR2015} futher extends the idea by making the relation a complete space rather than a hyperplane in entity space. With a linear mapping between these two spaces, their scoring function is $f(h, r, t) = \lVert hM_r + r - h M_r \rVert_2^2$. These models differ from ours both in its discriminative nature and the translation assumption.
 
-TransG~\cite{TransG} is a generative model and is thus closest to our work. It draws head and tail entities from gaussian distributions, and draw the relation from a mixture of both entities. It uses the Chinese restaurant process to model the relation token implying different semantics, namely the \emph{multi-semantic phenomenon}.
-On the contrary, our model doesn't assume explicit gaussian density, but uses the adversarial framework to approximate the unknown real data distribution, which is a merit of GAN~\cite{Goodfellow_2016}.
+TransG~\cite{TransG} is a generative model and is thus closest to our work. It draws head and tail entities from gaussian distributions, and draw the relation from a mixture of both entities. It uses the Chinese restaurant process to model the relation token which implys different semantics, namely the \emph{multi-semantic phenomenon}.
+On the contrary, our model doesn't assume explicit gaussian density is available, but uses the adversarial framework to approximate the unknown real data distribution, which is a merit of GAN~\cite{Goodfellow_2016}.
 
 \paragraph{Neural models} Apart from the translation-based scoring function, Structured Embedding~\cite{bordes2011structured_embedding} is the start of the other approach, which defines the scoring functions using two matrices as $f(h, r, t) = \lVert M_{r,1}h - M_{r,2}t \rVert_{L1}$. Latent Factor Model~\cite{jenatton2012bilinear} uses a bilinear model to characterize the relation between two entities with the scoring function as $f(h, r, t) = h^T W_r t$.
-Single Layer Model is a baseline in Socher et al.~\cite{NTN}, which use one single layer neural network as the scoring function, namely $f(h, r, t)=u_r^T \tanh(W_r[h;t])$. They further propose the most expressive Neural Tensor Network (NTN) model, which utilizes the merits of both the bilinear model and single layer neural network. The scoring function is $u_r^T \tanh(h^T W_r^{[1:k]}t + V_r[h;t] + b_r)$. Due to the large amount of parameters, it's not easy to train NTN on large scale data.
+Single Layer Model is a baseline proposed by Socher et al.~\cite{NTN}, which uses one single layer neural network as the scoring function, namely $f(h, r, t)=u_r^T \tanh(W_r[h;t])$. They further propose the most expressive Neural Tensor Network (NTN) model, which utilizes the merits of both the bilinear model and single layer neural network. The scoring function is $u_r^T \tanh(h^T W_r^{[1:k]}t + V_r[h;t] + b_r)$. Due to the large amount of parameters, it's not easy to train NTN on large scale data.
 
 \paragraph{GANs} Then let's move on to the GANs. GAN~\cite{GAN} proposes a vivid explaination of the minimax game between a discriminator and a generator, which is successfully applied to the image processing field~\cite{Ledig_2017_CVPR}. However, classic GAN is hard to train~\cite{Salimans_2016}. Through a detailed analysis on the objective, Arjovsky et al.\ proposed Wasserstein GAN~\cite{Arjovsky2017WGAN} which replaces the Jensen-Shannon divergence with the Earth-Mover distance. They also reported new techniques for training~\cite{Gulrajani2017LipschitzReg}, which aims to add penalty term into gradients to enforce the Lipschitz constraint.
 
@@ -327,7 +332,7 @@ Cai and Wang recently develops a similar KBGAN~\cite{Cai2017KBGAN} model to ours
         \toprule
         \multirow{3}*{\textbf{Model}} & \multicolumn{4}{c|}{\textbf{FB15k}}  & \multicolumn{4}{c}{\textbf{WN18}} \\
         \cline{2-9}
-            & \multicolumn{2}{c|}{Mean Rank} & \multicolumn{2}{c|}{Hits@10(\%)} & \multicolumn{2}{c|}{Mean Rank} & \multicolumn{2}{c}{Hits@10(\%)} \\
+            & \multicolumn{2}{c|}{Mean Rank} & \multicolumn{2}{c|}{Hits@10 (\%)} & \multicolumn{2}{c|}{Mean Rank} & \multicolumn{2}{c}{Hits@10 (\%)} \\
         \cline{2-9}
             & Raw & Filter & Raw & Filter & Raw & Filter & Raw & Filter \\
         \midrule
@@ -335,22 +340,20 @@ Cai and Wang recently develops a similar KBGAN~\cite{Cai2017KBGAN} model to ours
         TransH & 212 & 87 & 45.7 & 64.4 & 401 & 388 & 73.0 & 82.3 \\
         TransR & 198 & 77 & 48.2 & 68.7 & 238 & 225 & 79.8 & 92.0 \\
         TransD & 194 & 91 & 53.4 & 77.3 & 224 & 212 & 79.6 & 92.5 \\
-        TransG & 152 & 50 & 55.9 & 88.2 & 357 & 345 & 84.5 & 94.9 \\
+        TransG & \textbf{152} & \textbf{50} & \textbf{55.9} & \textbf{88.2} & \textbf{357} & \textbf{345} & \textbf{84.5} & \textbf{94.9} \\
         \midrule
-        TransE-NNS & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
-        TransE-Pre & 235 & 159 & 36.3 & 44.29 & 5 & 6 & 7 & 8 \\
-        Generator-NNS & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
-        Generator-NS & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
-        Generator-Pre & 314 & 234 & 39.1 & 50.8 & 5 & 6 & 7 & 8 \\
+        TransE-NNS & 844 & 779 & 20.5 & 23.7 & 5024 & 5014 & 13.6 & 14.5 \\
+        TransE-Pre & 235 & 159 & 36.3 & 44.3 & 528 & 516 & \textbf{79.2} & \textbf{91.1} \\
+        Generator-NNS & 1278 & 1212 & 14.4 & 16.0 & 13293 & 13282 & 3.8 & 3.8  \\
+        Generator-NS & 417 & 331 & 26.2 & 31.7 & 9967 & 9952 & 5.0 & 5.1 \\
+        Generator-Pre & 314 & 234 & 39.1 & 50.8 & 9896 & 9881 & 9.3 & 10.9 \\
         \midrule
-        % Generator-Adv & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
-        % TransE-Adv & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
-        Ens-Pre & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
-        AdvE & 205 & 118 & 44.8 & 58.7 & 5 & 6 & 7 & 8 \\
+        Ens-Pre & \textbf{204} & \textbf{121} & 43.7 & 55.5 & {-} & {-} & {-} & {-} \\
+        AdvE & 209 & 122 & \textbf{44.9} & \textbf{59.0} & \textbf{520} & \textbf{509} & 75.6 & 87.0 \\
         
         \bottomrule
     \end{tabular}
-    \caption{Results of link prediction}
+    \caption{Results of link prediction. \emph{AdvE} and \emph{Ens-Pre} models on WN18 are of different settings. See Section~{\ref{subsec:WN18-notes}}}
 \label{tab:link-prediction-results}
 \end{table*}
 
@@ -363,7 +366,7 @@ We conducted our experiments on public datasets, which is extracted from Wordnet
 
 \subsection{Datasets}
 
-\paragraph{WordNet} This graph dataset is actually an important linguistic resources. WordNet~\cite{miller1995wordnet} is organized in \emph{synsets} which groups simiar word senses together, and it also defines the relations between different senses. Typical relations are like hypernym, meronym, etc. We use the dataset version from~\cite{bordes2014SME} where an entity is a synset in WordNet, and relations are those between these synsets. Since there are 18 relations in this dataset, we use WN18 to denote the dataset in this paper. Example triples from this dataset are like \texttt{({\_}{\_}tetraneuris{\_}grandiflora{\_}NN{\_}1, {\_}hypernym, {\_}{\_}wildflower{\_}NN{\_}1)} and \texttt{({\_}{\_}enrich{\_}VB{\_}1, {\_}hyponym, {\_}{\_}fertilize{\_}VB{\_}1)}.
+\paragraph{WordNet} This graph dataset is actually an important linguistic resources. WordNet~\cite{miller1995wordnet} is organized in \emph{synsets} which group simiar word senses together, and it also defines the relations between different senses. Typical relations are like hypernym, meronym, etc. We use the dataset version from~\cite{bordes2014SME} where an entity is a synset in WordNet, and relations are those between these synsets. Since there are 18 relations in this dataset, we use WN18 to denote the dataset in this paper. Example triples from this dataset are like \texttt{({\_}{\_}tetraneuris{\_}grandiflora{\_}NN{\_}1, {\_}hypernym, {\_}{\_}wildflower{\_}NN{\_}1)} and \texttt{({\_}{\_}enrich{\_}VB{\_}1, {\_}hyponym, {\_}{\_}fertilize{\_}VB{\_}1)}.
 
 \paragraph{Freebase} This dataset~\cite{bollacker2008freebase} is a large knowledge bases of general facts about the world, which is now closed and merged with WikiData. It has 1.9 billion triple facts in its last version. Due to its popularity, we still use the dataset which is subset of Freebase extracted by~\cite{TransE2013}. There are roughly 15 thousands entities in the set, we therefore denote it with FB15k throughout the paper.
 
@@ -374,7 +377,7 @@ We conducted our experiments on public datasets, which is extracted from Wordnet
 
 We at first pretrain both the generator and the discriminator for further adversarial training. To train the generator, we minimize the cross entropy loss as~(\ref{eq:g_pretrain}). For the discriminator, we just adopt TransE and take a close look at how the adversarial setting could affect its performance. We use the original loss function~(\ref{eq:TransE}) to train TransE, and keep most of the hyperparameters unchanged. The pretrained models are denoted as \emph{TransE-Pre} and \emph{Generator-Pre} respectively.
 
-We also want to know how negative sampling affects the models. Thus we use empty set of negative samples in (~\ref{eq:TransE}) and train a model denoted as \emph{TransE-NNS}, whose \emph{-NNS} suffix means \emph{Non-Negative Sampling}. For the generator case, because the softmax function uses out all the logits to compute the probabilistic distribution, we think it in general takes all the other output as negative samples. Thus we replace softmax with sigmoid function and maxmize the only probability of the desired tail entity, and simulates a generative model with no negative sampling. We denote this model with \emph{Generator-NNS}. Furthermore, following the strategy in TransE, we add the negative samples into \emph{Generator-NNS} and  minimize a similar loss as~(\ref{eq:TransE}). The obtained generator is called \emph{Generator-NS}, where \emph{-NS} suffix means \emph{Negative Sampling}.
+We also want to know how negative sampling affects the models. Thus we use empty set of negative samples in~(\ref{eq:TransE}) and train a model denoted as \emph{TransE-NNS}, whose \emph{-NNS} suffix means \emph{Non-Negative Sampling}. For the generator case, because the softmax function uses out all the logits to compute the probabilistic distribution, we think it in general takes all the other output as negative samples. Thus we replace softmax with sigmoid function and maxmize the only probability of the desired tail entity, and simulates a generative model with no negative sampling. We denote this model with \emph{Generator-NNS}. Furthermore, following the strategy in TransE, we add the negative samples into \emph{Generator-NNS} and  minimize a similar loss as~(\ref{eq:TransE}). The obtained generator is called \emph{Generator-NS}, where \emph{-NS} suffix means \emph{Negative Sampling}.
 
 Finally, we run the adversarial training algorithm and construct an ensemble of the generator and the discriminator. The overall model is denoted as \emph{AdvE}. To show the effect of adversarial training, we also construct an ensemble of the pretrained models directly, which is denoted as \emph{Ens-Pre}.
 
@@ -385,7 +388,7 @@ For adversarial training we add a slight regularization by setting the rate of w
 
 We use Adam~\cite{Adam} for optimization, and choose most of the recommended settings as $\beta_1=0.9,\beta_2=0.999$ and $\epsilon=10^{-8}$. For pretraining we set $\alpha=0.001$ as recommended, and set $\alpha=0.0001$ for adversarial training. We set the batch size to 1000 throughout the paper.
 
-We selected the $\alpha$ in~(\ref{eq:weighted-ensemble}) from $ \{0, 0.1, \dots, 0.9, 1\} $ to construct the ensemble on the validation set. Results show that 0.7 is the best. Thus all the reported link prediction results in Table~\ref{tab:link-prediction-results} are obtained with $\alpha=0.7$.
+We selected the $\alpha$ in~(\ref{eq:weighted-ensemble}) from $ \{0, 0.1, \dots, 0.9, 1\} $ to construct the ensemble on the validation set. All the reported link prediction results in Table~\ref{tab:link-prediction-results} are obtained with the best $\alpha=0.7$ for FB15k. We select $\tau$ in~(\ref{eq:gumbel-softmax}) from $\{ 0.1, 1\}$ and set it to 0.1. The other temperature in~(\ref{eq:ranking}) and~(\ref{eq:g_loss}) are fixed to 0.2 and 0.1 respectively.
 
 Both the generator and TransE are pretrained for 20,000 iterations and almostly convergent on FB15k and WN18. For the adversarial training, we also use the 20,000 iteration limit. During every iteration, we first update once for the discriminator and then once for the generator. We dump the model every 2000 iteration and test it on the validation set, and choose the best model to report the results.
 
@@ -395,66 +398,96 @@ Both the generator and TransE are pretrained for 20,000 iterations and almostly 
 
 \paragraph{Results} Table~\ref{tab:link-prediction-results} lists the overall results. TransE-Pre is theoretically identical to the original TransE. We hypothesize that the better performance of TransE-Pre is owed to the Adam optimizer which is yet not available at the time of the original TransE.
 
-Furthermore, by comparing the TransE-Pre and TransE-NNS, we show that negative sampling is crucial for the discriminator. Similar phenomenon is observed between Generator-NNS and Generator-NS, that the Non-Negative Sampling model is much weaker than the Negative Sampling one. We have stated in the previous subsection that the Generator-Pre may have latently used all the other samples as negative, which also shows best performance compared with the Generator-NS and {Generator-NNS}.
+Furthermore, by comparing the TransE-Pre and TransE-NNS, we show that negative sampling is crucial for the discriminator. Similar phenomenon is observed between Generator-NNS and Generator-NS, that the Non-Negative Sampling model is much weaker than the Negative Sampling one. We have stated in the previous subsection that the Generator-Pre may have latently used all the other samples as negative, which also shows best performance compared to the Generator-NS and {Generator-NNS}.
 
-By constructing an ensemble of the pretrained generator and TransE model, Ens-Pre gives better results against both base models. Adversarial training futher improves the ensemble and outperforms our baselines. The result is even better then Generator-Pre which minimizes the softmax-cross-entropy loss and is considered to use all negative samples in training.
+By constructing an ensemble of the pretrained generator and TransE model, Ens-Pre gives better results against both base models on FB15k. Adversarial training futher improves the ensemble and outperforms our baselines. The result is even better then Generator-Pre which minimizes the softmax-cross-entropy loss and is considered to use all negative samples in training.
 
-The translation-based models are still strong compared to ours, in particular TransD and TransG. We nevertheless show the power of the adversarial training setting and ensemble learning. Our results have compellingly improved the start point, TransE. Theoretically, other discriminative models could also be incorporated into the framework, among which TransE is chosen for its conciseness and beauty, and is the most representative of translation assumption.
+The translation-based models are still strong compared to ours, in particular TransD and TransG. We nevertheless show the power of the adversarial training setting and ensemble learning. Our results have compellingly improved the start point, TransE, on FB15k. Theoretically, other discriminative models could also be incorporated into the framework, among which TransE is chosen for its conciseness and beauty, and is the most representative one of translation assumption.
 
-\begin{table}[htbp]
-    \centering
-    \begin{tabular}{c|r|r|r|r}
-        \toprule
-        \textbf{Category} & \textbf{1-1} & \textbf{1-N} & \textbf{N-1} & \textbf{N-N} \\
-        \midrule
-        TransE & 43.7 & 19.7 & 66.7 & 50.0 \\
-        TransH & 65.5 & 39.8 & 83.3 & 67.2 \\
-        TransR & 79.2 & 37.4 & 90.4 & 72.1 \\
-        TransD & 85.4 & 50.6 & 94.4 & 81.2 \\
-        TransG & 92.8 & 68.1 & 94.5 & 88.8 \\
-        \midrule
-        TransE-Pre & 1 & 2 & 3 & 4 \\        
-        Generator-Pre & 1 & 2 & 3 & 4 \\
-        \midrule
-        Ens-Pre & 1 & 2 & 3 & 4 \\
-        AdvE & 1 & 2 & 3 & 4 \\
-        \bottomrule
-    \end{tabular}
-    \caption{Results of Hits\@10(\%) on FB15k for different relation category.}
-\label{tab:rel-cate-results}
-\end{table}
+\paragraph{Analysis on WN18\label{subsec:WN18-notes}} We found the MLP generator gives really poor results on WN18. Any weighted rate in $\{ 0.1, \dots, 0.9, 0.91, \dots, 0.99 \}$ failed to beat the TransE. We thus do not report results for the Ens-Pre model because the best $\alpha$ actually suggests to only use TransE. For the adversarial training setting, we use the best $\alpha=0.99$ in the set, which is still worse than TransE. This is consistent with the theory of ensemble learning in that ensemble is not magic or elixir that works for any weak base learner. If the base learner is not sufficiently useful, like in the MLP generator case, the ensemble will not benefit the final performance. This suggests us to devise better generative model in the future work.
 
-Following the detailed analysis in~\cite{TransE2013}, we categorize all the relations into 4 groups, namely, \texttt{1-TO-1}, \texttt{1-TO-MANY}, \texttt{MANY-TO-1}, and \texttt{MANY-TO-MANY} relations. Given a relation $r$, we average out the amount of distict tail entities (and respectively head entities) present in the training data for every companying head entity $h$ (tail entity respectively $t$) with $r$. If the average is smaller than 1.5, we labeled the corresponding entity as \texttt{1}, otherwise labeled as \texttt{MANY}. Composition of the head and tail label yields the 4 kinds of relations above. Since the WN18 dataset has only 18 relations, we only report the Hits\@10 metric for each relation category on the FB15k dataset, following the previous work. Since our generator predict the tail entity distribution given a relation and a head entity, we only do the prediction on tail, while other previous work also report the performance of predicting head. Since we benchmark our model using the same dataset, the results of other comparing methods are collected from their corresponding papers.
-
-
-\begin{figure*}[tp]
+\begin{table}[htb]
     \centering
     \parbox[b]{\columnwidth}{
         \centering
-        \includegraphics[width=.3\textwidth]{images/ensemble-mean-rank.pdf}
+        \begin{tabular}{c|r|r|r|r}
+            \toprule
+            \textbf{Category} & \textbf{1{-}1} & \textbf{1-N} & \textbf{N-1} & \textbf{N-N} \\
+            \midrule
+            TransE & 43.7 & 19.7 & 66.7 & 50.0 \\
+            TransH & 65.5 & 39.8 & 83.3 & 67.2 \\
+            TransR & 79.2 & 37.4 & 90.4 & 72.1 \\
+            TransD & 85.4 & 50.6 & 94.4 & 81.2 \\
+            TransG & 92.8 & 68.1 & 94.5 & 88.8 \\
+            \midrule
+            TransE-Pre & 46.7 & 14.3 & 70.3 & 43.1 \\        
+            Generator-Pre & 26.0 & 15.0 & 78.7 & 49.7 \\
+            \midrule
+            Ens-Pre & 57.6 & 20.5 & 83.7 & 53.8 \\
+            AdvE & \textbf{61.4} & \textbf{22.9} & \textbf{84.6} & \textbf{58.1} \\
+            \bottomrule
+        \end{tabular}
+        \subcaption{Results of tail prediction}        
+    }
+    
+    \parbox[b]{\columnwidth}{
+        \centering
+        \begin{tabular}{c|r|r|r|r}
+            \toprule
+            \textbf{Category} & \textbf{1{-}1} & \textbf{1-N} & \textbf{N-1} & \textbf{N-N} \\
+            \midrule
+            TransE & 43.7 & 65.7 & 18.2 & 47.2 \\
+            TransH & 66.8 & 87.6 & 28.7 & 64.5 \\
+            TransR & 78.8 & 89.2 & 34.1 & 69.2 \\
+            TransD & 86.1 & \textbf{95.5} & 39.8 & \textbf{78.5} \\
+            TransG & \textbf{92.3} & 93.7 & \textbf{66.0} & 69.6 \\
+            \midrule
+            TransE-Pre & 47.8 & 66.5 & 13.3 & 40.6 \\        
+            Generator-Pre & 30.3 & 71.0 & 17.4 & 46.1 \\
+            \midrule
+            Ens-Pre & 58.8 & 78.6 & 20.7 & 50.3 \\
+            AdvE & \textbf{63.2} & \textbf{80.8} & \textbf{22.6} & \textbf{53.8} \\
+            \bottomrule
+        \end{tabular}
+        \subcaption{Results of head prediction}        
+    }
+
+    \caption{Results of filtered Hits@10(\%) to predict tail entities on FB15k for different relation category.}
+\label{tab:rel-cate-results}
+\end{table}
+
+\paragraph{Relation category analysis} Following the detailed analysis in~\cite{TransE2013}, we categorize all the  relations of FB15k into 4 groups, namely, \texttt{1-TO-1}, \texttt{1-TO-MANY}, \texttt{MANY-TO-1}, and \texttt{MANY-TO-MANY} relations. Given a relation $r$, we average out the amount of distict tail entities (and respectively head entities) present in the training data for every companying head entity $h$ (tail entity respectively $t$) with $r$. If the average is smaller than 1.5, we labeled the corresponding entity as \texttt{1}, otherwise labeled as \texttt{MANY}. Composition of the head and tail label yields the 4 kinds of relations above. Specifically, the amount and ratio of \texttt{1-TO-1}, \texttt{1-TO-MANY}, \texttt{MANY-TO-1}, and \texttt{MANY-TO-MANY} relations are 368(27.3\%), 309(23.0\%), 394(29.3\%), and 274(20.4\%) respectively.
+
+Results are reported in Table~{\ref{tab:rel-cate-results}} grouped by these 4 categories when predicting head and tail. TransG clearly gives the best result under this view. However, our methods also give a higher result compared to our start point TransE.
+
+Since the WN18 dataset has merely 18 relations, we only report the Hits@10 metric for each relation category on the FB15k dataset, following the previous work. Although the generator only predicts the tail entities given a relation and a head, we apply a small trick that to reverse the FB15k source data as $(t, r, h)$ and re-run the experiment, making the generator actually predict $h$ given $r$ and $t$. Since we benchmark our model using the same dataset, the results of other comparing methods are collected from their corresponding papers.
+
+
+\begin{figure}[htb]
+    \centering
+    \parbox[b]{\columnwidth}{
+        \centering
+        \includegraphics[width=.3\textwidth]{ensemble-mean-rank.pdf}
         \subcaption{}        
     }
     \parbox[b]{\columnwidth}{
         \centering
-        \includegraphics[width=.3\textwidth]{images/ensemble-hit10.pdf}
+        \includegraphics[width=.3\textwidth]{ensemble-hit10.pdf}
         \subcaption{}
     }
-    \caption{Ensemble parameter selection on validation set. The best alpha value is 0.7 for Hits\@10, and either 0.7 or 0.8 is good for the mean rank metric. Since there isn't much difference on these values, we adopt 0.7 due to the preference for the Hits\@10 metric.}
+    \caption{Ensemble parameter selection on validation set. The best alpha value is 0.7 for Hits@10, and either 0.7 or 0.8 is good for the mean rank metric. Since there isn't much difference on these values, we adopt 0.7 due to the preference for the Hits@10 metric.}
 \label{fig:ensemble}
-\end{figure*}
+\end{figure}
 
-\paragraph{Ensemble Construction} Figure~\ref{fig:ensemble} shows the results of different parameters of ensemble learning on validation set. We conduct ensemble constructions for the pretrained as well as the adversarially trained models. We report the results for both the mean rank and hits@10 metrics under the \emph{raw} criterion. As illustrated in Figure~\ref{fig:ensemble}, a single model, either the generator or the TransE, cannot perform beat the ensemble. According to~(\ref{eq:weighted-ensemble}), $\alpha=0$ shows the performance of the generator only, and $\alpha=1$ the discriminator. The best ensemble $\alpha=0.7$ is in the middle of the two but moderately biased towards TransE.  
+\paragraph{Ensemble Construction} Figure~\ref{fig:ensemble} shows the results of different parameters of ensemble learning on validation set. We conduct ensemble constructions for the pretrained as well as the adversarially trained models. We report the results for both the mean rank and Hits@10 metrics under the \emph{raw} criterion. As illustrated in Figure~\ref{fig:ensemble}, a single model, either the generator or the TransE, cannot perform better than the ensemble. According to~(\ref{eq:weighted-ensemble}), $\alpha=0$ corresponds to the performance of the generator only, and $\alpha=1$ the discriminator. The best ensemble $\alpha=0.7$ is in the middle of the two but moderately skewed towards TransE.
 
-\subsection{Triple classification}
-
-blabla
 
 % --------------------------------------
 % conclusion
 
 \section{Conclusion}
 
-blabla
+We proposed an adversarial training framework to unify both discriminative and generative models, along with the ranking-based loss and gumbel softmax method incorporated for the challenges in learning knowledge graph embeddings. We further illustrate the merits and the weakness of ensemble learning on the two kinds of models. Based on the framework, we eased the difficulties in negative sampling and one-to-many relations systematically. This results show the effectiveness of our methods on FB15k dataset.
 
 % --------------------------------------
 \section*{References}
