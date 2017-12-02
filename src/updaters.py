@@ -244,8 +244,8 @@ class MLEGenNSUpdater(MLEGenUpdater):
 class GANPretraining(chainer.training.StandardUpdater):
     def __init__(self, data_iter, opt_g, opt_d, ent_num, rel_num, margin=1., device=-1):
         super(GANPretraining, self).__init__(data_iter, opt_g, device=device)
-        self.g = opt_g.target
-        self.d = opt_d.target
+        self.g = opt_g.target if opt_g is not None else None
+        self.d = opt_d.target if opt_d is not None else None
         self.opt_g = opt_g
         self.opt_d = opt_d
         self.margin = margin
@@ -258,24 +258,26 @@ class GANPretraining(chainer.training.StandardUpdater):
         bsz = h.shape[0]
 
         # train G with softmax-cross-entropy
-        logits = self.g(h, r)
-        loss_g = F.softmax_cross_entropy(logits, t.reshape(-1))
-        self.g.cleargrads()
-        loss_g.backward()
-        self.opt_g.update()
-        chainer.report({'loss_g': loss_g})
+        if self.g is not None:
+            logits = self.g(h, r)
+            loss_g = F.softmax_cross_entropy(logits, t.reshape(-1))
+            self.g.cleargrads()
+            loss_g.backward()
+            self.opt_g.update()
+            chainer.report({'loss_g': loss_g})
 
         # train D with hinge loss and random negative sampling
-        # loss_pos = self.d(h, r, t)
-        # xp = chainer.cuda.get_array_module(h)
-        # t_neg = xp.random.randint(0, self.ent_num, size=(bsz, 1))
-        # loss_neg = self.d(h, r, t_neg)
-        # margin = self.margin * xp.sign(xp.absolute(t - t_neg)).reshape(bsz, 1)
-        # loss_d = F.sum(F.relu(loss_neg - loss_pos + margin))
-        # self.d.cleargrads()
-        # loss_d.backward()
-        # self.opt_d.update()
-        # chainer.report({'loss_d': loss_d})
+        if self.d is not None:
+            loss_pos = self.d(h, r, t)
+            xp = chainer.cuda.get_array_module(h)
+            t_neg = xp.random.randint(0, self.ent_num, size=(bsz, 1))
+            loss_neg = self.d(h, r, t_neg)
+            margin = self.margin * xp.sign(xp.absolute(t - t_neg)).reshape(bsz, 1)
+            loss_d = F.sum(F.relu(loss_neg - loss_pos + margin))
+            self.d.cleargrads()
+            loss_d.backward()
+            self.opt_d.update()
+            chainer.report({'loss_d': loss_d})
 
     @staticmethod
     def get_report_list():

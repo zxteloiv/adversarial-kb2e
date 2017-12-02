@@ -23,7 +23,7 @@ def main():
                 realize_plan(plan)
                 plan['complete'] = 1
                 save_plans(sys.argv[1], plans, keys)
-                train.main(sys.argv[1:])
+                train.main(sys.argv[2:])
                 break
 
     else:

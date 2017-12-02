@@ -90,7 +90,7 @@ class Generator(chainer.Chain):
         # generator = models.VarMLP([config.EMBED_SZ * 2, config.EMBED_SZ, config.EMBED_SZ, ent_num], config.DROPOUT)
         super(Generator, self).__init__()
         with self.init_scope():
-            self.mlp = VarMLP([emb_sz * 2, emb_sz, emb_sz, ent_num], dropout, activate=F.selu)
+            self.mlp = VarMLP([emb_sz * 2, emb_sz, emb_sz, ent_num], dropout)
             self.emb = Embeddings(emb_sz, ent_num, rel_num)
 
         self.ent_num = ent_num
@@ -197,8 +197,8 @@ class TransE(chainer.Chain):
         r_emb = self.rel_emb(r).reshape(bsz, -1)
 
         half = bsz / 2
-        h_corr = xp.random.randint(1, self.ent_num + 1, size=(half, 1)).astype('i')
-        t_corr = xp.random.randint(1, self.ent_num + 1, size=(bsz - half, 1)).astype('i')
+        h_corr = xp.random.randint(1, self.ent_num, size=(half, 1)).astype('i')
+        t_corr = xp.random.randint(1, self.ent_num, size=(bsz - half, 1)).astype('i')
         h_neg = F.concat([h_corr, h[half:]], axis=0)
         t_neg = F.concat([t[:half], t_corr], axis=0)
         h_neg_emb = self.ent_emb(h_neg).reshape(bsz, -1)
@@ -245,4 +245,106 @@ class TransENNG(TransE):
         loss = F.sum(dis_pos)
         chainer.report({'loss': loss, 'loss_pos': F.sum(dis_pos), 'loss_neg': 0})
         return loss
+
+
+class BatchLinear(chainer.Link):
+    def __init__(self, rel_num, emb_sz):
+        super(BatchLinear, self).__init__()
+        initialM = np.zeros(shape=(rel_num, emb_sz, emb_sz), dtype=np.float32)
+        for i in xrange(len(initialM)):
+            initialM[i] = np.identity(emb_sz)
+
+        with self.init_scope():
+            self.M = chainer.Parameter(initializer=initialM, shape=(rel_num, emb_sz, emb_sz))
+
+    def __call__(self, batch_rel_idx, x):
+        bsz = x.shape[0]
+        batch_rel_idx = chainer.as_variable(batch_rel_idx.reshape(-1))
+        M_r = F.get_item(self.M, batch_rel_idx.data)
+        y = F.batch_matmul(M_r, x)
+        return y.reshape(bsz, -1)
+
+
+class TransR(chainer.Chain):
+    def __init__(self, emb_sz, ent_num, rel_num, margin=1, norm=1):
+        super(TransR, self).__init__()
+        with self.init_scope():
+            self.bl = BatchLinear(rel_num, emb_sz)
+            self.emb = Embeddings(emb_sz, ent_num, rel_num)
+
+        self.emb_sz = emb_sz
+        self.ent_num = ent_num
+        self.rel_num = rel_num
+        self.margin = margin
+        self.norm = norm
+
+    def __call__(self, h, r, t):
+        bsz = h.shape[0]
+        xp = chainer.cuda.get_array_module(h)
+        h_emb = self.emb.ent(h).reshape(bsz, -1)
+        t_emb = self.emb.ent(t).reshape(bsz, -1)
+        r_emb = self.emb.rel(r).reshape(bsz, -1)
+        Mr_h = self.bl(r, h_emb)
+        Mr_t = self.bl(r, t_emb)
+
+        half = bsz / 2
+        h_corr = xp.random.randint(0, self.ent_num, size=(half, 1)).astype('i')
+        t_corr = xp.random.randint(0, self.ent_num, size=(bsz - half, 1)).astype('i')
+        h_neg = F.concat([h_corr, h[half:]], axis=0)
+        t_neg = F.concat([t[:half], t_corr], axis=0)
+        h_neg_emb = self.emb.ent(h_neg).reshape(bsz, -1)
+        t_neg_emb = self.emb.ent(t_neg).reshape(bsz, -1)
+        Mr_h_neg = self.bl(r, h_neg_emb)
+        Mr_t_neg = self.bl(r, t_neg_emb)
+
+        if self.norm == 1:
+            # L1 norm
+            dis_pos = F.sum(F.absolute(Mr_h + r_emb - Mr_t), axis=1)
+            dis_neg = F.sum(F.absolute(Mr_h_neg + r_emb - Mr_t_neg), axis=1)
+        else:
+            # L2 norm
+            dis_pos = F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - t_emb))
+            dis_neg = F.sqrt(F.batch_l2_norm_squared(Mr_h_neg + r_emb - Mr_t_neg))
+
+        margin = self.margin * xp.sign(xp.absolute((h - h_neg).data) + xp.absolute((t - t_neg).data)).reshape(-1)
+
+        loss = F.sum(F.relu(margin + dis_pos - dis_neg))
+        chainer.report({'loss': loss, 'loss_pos': F.sum(dis_pos), 'loss_neg': F.sum(dis_neg)})
+        return loss
+
+    @staticmethod
+    def get_report_list():
+        return ['epoch', 'iteration', 'loss', 'loss_pos', 'loss_neg', 'elapsed_time']
+
+    def dist(self, h, r, t):
+        bsz = h.shape[0]
+        xp = chainer.cuda.get_array_module(h)
+        h_emb = self.emb.ent(h).reshape(bsz, -1)
+        t_emb = self.emb.ent(t).reshape(bsz, -1)
+        r_emb = self.emb.rel(r).reshape(bsz, -1)
+        Mr_h = self.bl(r, h_emb)
+        Mr_t = self.bl(r, t_emb)
+        if self.norm == 1:
+            # L1 norm
+            dis_pos = F.sum(F.absolute(Mr_h + r_emb - Mr_t), axis=1)
+        else:
+            # L2 norm
+            dis_pos = F.sqrt(F.batch_l2_norm_squared(h_emb + r_emb - t_emb))
+
+        return dis_pos.reshape(bsz, -1)
+
+
+if __name__ == "__main__":
+    print "WARNING: debug mode for models only, do no rely on this executable script directly"
+
+    rel_num, ent_num, emb_sz, bsz = 10, 100, 7, 3
+    rels = chainer.Variable(np.random.randint(rel_num, size=(bsz, 1)).astype('i').reshape(-1, 1))
+
+    emb = L.EmbedID(ent_num, emb_sz)
+    l = BatchLinear(rel_num, emb_sz, emb_sz)
+    x = np.random.randint(ent_num, size=(bsz,)).astype('i')
+    x_emb = emb(x)
+
+    y = l(rels, x_emb)
+    print y
 

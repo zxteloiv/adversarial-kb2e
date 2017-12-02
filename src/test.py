@@ -14,7 +14,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('models', nargs='+')
     parser.add_argument('--use-valid', '-v', action='store_true', help="use validation set, otherwise test")
-    parser.add_argument('--setting', '-s', default='gan', choices=['gan', 'transe', 'mle'])
+    parser.add_argument('--setting', '-s', default='gan', choices=['gan', 'transe', 'mle', 'transr'])
     parser.add_argument('--msg', '-m', help='a message to print')
     parser.add_argument('--alpha', '-a', default=.5, type=float, help='GAN: alpha * d_value + (1-alpha) * g_value')
     parser.add_argument('--full', action='store_true', help='do a full testing')
@@ -68,6 +68,12 @@ def main():
         chainer.serializers.load_npz(args.models[0], transE)
         scorer = TransE_Scorer(transE, xp)
 
+    # TransR setting
+    elif args.setting == 'transr':
+        transR = models.TransR(config.EMBED_SZ, ent_num, rel_num, config.MARGIN, config.TRANSE_NORM)
+        chainer.serializers.load_npz(args.models[0], transR)
+        scorer = TransR_Scorer(transR, xp)
+
     # GAN testing
     elif args.setting == 'gan':
         generator = models.Generator(config.EMBED_SZ, ent_num, rel_num, config.DROPOUT)
@@ -119,6 +125,27 @@ class TransE_Scorer(object):
         values = self.xp.linalg.norm(h_emb + r_emb - self.ct_emb, ord=config.TRANSE_NORM, axis=1)  # norm value vector with shape of (#entity_num, )
 
         scores = chainer.cuda.to_cpu(values) # cupy doesn't support argsort yet
+        return scores
+
+
+class TransR_Scorer(object):
+    def __init__(self, model, xp):
+        self.transR = model if config.DEVICE < 0 else model.to_gpu(config.DEVICE)
+        self.xp = xp
+
+    def set_candidate_t(self, candidate_t):
+        self.bsz = candidate_t.shape[0]
+        self.ct = chainer.as_variable(candidate_t.reshape(self.bsz, -1))
+
+    def __call__(self, h, r):
+        h_emb = self.transR.emb.ent(h)  # shape of (batchsz=1, embedding_size)
+        r_emb = self.transR.emb.ent(r)  # and variable doesn't support broadcasting
+
+        h = F.broadcast_to(h, (self.bsz, 1))
+        r = F.broadcast_to(r, (self.bsz, 1))
+
+        values = self.transR.dist(h, r, self.ct).reshape(-1)
+        scores = chainer.cuda.to_cpu(values.data)  # cupy doesn't support argsort yet
         return scores
 
 
